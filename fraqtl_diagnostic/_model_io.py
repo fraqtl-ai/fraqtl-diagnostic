@@ -1,0 +1,89 @@
+"""Model + calibration data loading."""
+from __future__ import annotations
+from typing import Iterable, Sequence
+
+import torch
+
+
+def load_model(model_id: str, *, trust_remote_code: bool = False):
+    """Load HF model + tokenizer in fp16. Returns (model, tokenizer)."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=trust_remote_code)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        torch_dtype=torch.float16,
+        device_map="auto",
+        trust_remote_code=trust_remote_code,
+    )
+    model.eval()
+    return model, tok
+
+
+def load_wikitext_calibration(
+    tokenizer, n_seqs: int = 32, seq_len: int = 512
+) -> torch.Tensor:
+    """Return [N, S] token tensor from wikitext-2-raw-v1 train split.
+
+    Picks the first N sequences with >=seq_len tokens and >=200 chars.
+    """
+    from datasets import load_dataset
+
+    ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    chosen = []
+    for t in ds["text"]:
+        if len(t) < 200:
+            continue
+        ids = tokenizer(
+            t, return_tensors="pt", truncation=True, max_length=seq_len
+        ).input_ids[0]
+        if ids.size(0) >= seq_len:
+            chosen.append(ids[:seq_len])
+        if len(chosen) >= n_seqs:
+            break
+    return torch.stack(chosen)
+
+
+def find_target_modules(
+    model, projections: Sequence[str] = ("down_proj", "o_proj"),
+    layer_limit: int | None = None,
+) -> dict:
+    """Locate target projection modules across transformer layers.
+
+    Returns {layer_idx: {proj_name: module}}. Supports both standard
+    (model.model.layers) and wrapped (model.model.language_model.layers) variants.
+    """
+    for attr_path in (
+        lambda m: m.model.layers,
+        lambda m: m.model.language_model.layers,
+    ):
+        try:
+            layers = attr_path(model)
+            break
+        except AttributeError:
+            layers = None
+    if layers is None:
+        raise RuntimeError(
+            "Could not locate transformer layers — tried model.model.layers and "
+            "model.model.language_model.layers. File an issue with your model's class name."
+        )
+
+    out: dict = {}
+    for i, block in enumerate(layers):
+        out[i] = {}
+        for proj in projections:
+            proj = proj.strip()
+            mod = None
+            if proj in ("down_proj", "gate_proj", "up_proj"):
+                mlp = getattr(block, "mlp", None)
+                if mlp is not None:
+                    mod = getattr(mlp, proj, None)
+            elif proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+                attn = getattr(block, "self_attn", None)
+                if attn is not None:
+                    mod = getattr(attn, proj, None)
+            if mod is not None:
+                out[i][proj] = mod
+    if layer_limit:
+        out = {i: v for i, v in out.items() if i < layer_limit}
+    return out
