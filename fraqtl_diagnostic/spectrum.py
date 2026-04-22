@@ -23,21 +23,24 @@ class Spectrum:
 def capture_single_hessian(
     model, calib_ids: torch.Tensor, target_module, device: str = "cuda"
 ) -> tuple[torch.Tensor, int]:
-    """Single forward pass over calibration, accumulating input covariance on CPU fp32.
+    """Single forward pass over calibration, accumulating input covariance in fp32.
 
-    Returns (H, n_samples). H is [in_dim, in_dim] mean-normalized.
+    H is accumulated on the compute device (GPU if available) — matmul is
+    ~30× faster than CPU for large dims (e.g. 14336×14336 down_proj on 7B).
+    Returned to CPU at the end.
+
+    Returns (H_cpu, n_samples). H is [in_dim, in_dim] mean-normalized.
     """
     in_dim = target_module.in_features
-    H = torch.zeros(in_dim, in_dim, dtype=torch.float32)
+    H = torch.zeros(in_dim, in_dim, dtype=torch.float32, device=device)
     count = 0
 
     def hook(_mod, inp, _out):
-        nonlocal H, count
+        nonlocal count
         x = inp[0].detach().to(torch.float32)
         if x.dim() == 3:
             x = x.reshape(-1, x.size(-1))
-        x = x.cpu()
-        H += x.T @ x
+        H.add_(x.T @ x)
         count += x.size(0)
 
     h = target_module.register_forward_hook(hook)
@@ -49,7 +52,7 @@ def capture_single_hessian(
         h.remove()
     if count > 0:
         H /= count
-    return H, count
+    return H.cpu(), count
 
 
 def eigendecompose(H: torch.Tensor) -> np.ndarray:

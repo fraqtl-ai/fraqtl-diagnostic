@@ -69,21 +69,44 @@ def find_target_modules(
         )
 
     out: dict = {}
+    missing_per_proj: dict[str, int] = {p: 0 for p in projections}
     for i, block in enumerate(layers):
         out[i] = {}
         for proj in projections:
             proj = proj.strip()
             mod = None
-            if proj in ("down_proj", "gate_proj", "up_proj"):
+            if proj in ("down_proj", "gate_proj", "up_proj", "gate_up_proj"):
                 mlp = getattr(block, "mlp", None)
                 if mlp is not None:
                     mod = getattr(mlp, proj, None)
-            elif proj in ("q_proj", "k_proj", "v_proj", "o_proj"):
+            elif proj in ("q_proj", "k_proj", "v_proj", "o_proj", "qkv_proj"):
                 attn = getattr(block, "self_attn", None)
                 if attn is not None:
                     mod = getattr(attn, proj, None)
             if mod is not None:
                 out[i][proj] = mod
+            else:
+                missing_per_proj[proj] += 1
     if layer_limit:
         out = {i: v for i, v in out.items() if i < layer_limit}
+
+    # Fail fast if NONE of the requested projections exist — common when a user
+    # points at a model with a non-standard architecture (e.g. GPT-2 uses c_attn).
+    covered = {p for layer in out.values() for p in layer}
+    if not covered:
+        raise RuntimeError(
+            f"None of the requested projections {tuple(projections)} were found on "
+            f"any layer. Check the model class — this tool currently supports Llama / "
+            f"Qwen / Mistral / Mixtral / TinyLlama / OLMoE / Phi-3-style naming. "
+            f"GPT-2 (c_attn / c_fc / c_proj) not yet supported."
+        )
+    # Soft note for partial coverage (e.g. Phi-3 has no separate q/k/v_proj).
+    skipped = [p for p, n in missing_per_proj.items() if n == len(layers)]
+    if skipped:
+        import warnings
+        warnings.warn(
+            f"projections {skipped} not present on this model — skipped. "
+            f"Diagnostic continues on: {sorted(covered)}.",
+            stacklevel=2,
+        )
     return out

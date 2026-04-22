@@ -27,12 +27,26 @@ def _make_parser() -> argparse.ArgumentParser:
                    help="Only profile first N layers (for smoke runs)")
     a.add_argument("--trust-remote-code", action="store_true")
     a.add_argument("--quiet", action="store_true", help="Suppress per-layer progress")
+    a.add_argument("--compare-to", default=None, metavar="REFERENCE_ID",
+                   help="Compare against a bundled reference model and emit a verdict. "
+                        "Run `fraqtl list-refs` to see bundled references.")
 
+    sub.add_parser("list-refs", help="List bundled reference models.")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _make_parser().parse_args(argv)
+
+    if args.command == "list-refs":
+        from .references import list_reference_models, calibration_description
+        print("Bundled reference models:")
+        for m in list_reference_models():
+            print(f"  {m}")
+        print()
+        print(f"Calibration: {calibration_description()}")
+        return 0
+
     if args.command != "analyze":
         return 2
 
@@ -47,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
         progress=not args.quiet,
     )
 
+    comparison = None
+    if args.compare_to:
+        from .compare import compare_to_reference
+        comparison = compare_to_reference(report, args.compare_to)
+
     # write reports
     safe = args.model_id.replace("/", "_")
     out = Path(args.out_dir)
@@ -57,10 +76,13 @@ def main(argv: list[str] | None = None) -> int:
 
     report.to_json(json_path)
     report.to_png(png_path)
-    report.to_html(html_path)
+    report.to_html(html_path, comparison=comparison)
 
     print()
     print(report.summary())
+    if comparison is not None:
+        print()
+        print(comparison.summary())
     print()
     print(f"JSON : {json_path}")
     print(f"HTML : {html_path}")

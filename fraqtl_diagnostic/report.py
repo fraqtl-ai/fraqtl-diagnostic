@@ -144,6 +144,9 @@ _HTML_TEMPLATE = """<!doctype html>
   td:first-child, th:first-child {{ text-align: left; }}
   .headline {{ background: #f7f9fb; border-left: 4px solid #3366cc;
                padding: 0.8em 1.2em; margin: 1em 0; font-family: monospace; }}
+  .verdict  {{ background: #fffaf0; border-left: 4px solid #e09020;
+               padding: 0.8em 1.2em; margin: 1em 0; }}
+  .delta    {{ font-family: monospace; font-weight: 600; }}
   .meta {{ color: #666; font-size: 0.85em; }}
   img {{ max-width: 100%; }}
 </style>
@@ -188,6 +191,8 @@ _HTML_TEMPLATE = """<!doctype html>
 <p>(generate the PNG with <code>report.to_png(path)</code> — shown here if embedded)</p>
 {png_embed}
 
+{comparison_section}
+
 <h2>About</h2>
 <p class="meta">
   This diagnostic measures information-theoretic compressibility from the input covariance
@@ -208,7 +213,35 @@ def _format_value(v, fmt="{:.3f}"):
     return fmt.format(v)
 
 
-def report_to_html(report, path: Path, *, embed_png: bool = True) -> None:
+def _comparison_html(comparison) -> str:
+    if comparison is None or not comparison.reference_available:
+        return ""
+    rows = []
+    for d in comparison.deltas:
+        rows.append(
+            f"<tr><td>{d.projection}</td>"
+            f"<td>{d.gamma_this:.3f}</td>"
+            f"<td>{d.gamma_ref:.3f}</td>"
+            f"<td class='delta'>{d.gamma_delta:+.3f}</td>"
+            f"<td>{d.k95_ratio_this:.2%}</td>"
+            f"<td>{d.k95_ratio_ref:.2%}</td>"
+            f"<td class='delta'>{d.k95_ratio_delta:+.2%}</td></tr>"
+        )
+    rationale_html = "".join(f"<li>{r}</li>" for r in comparison.rationale)
+    return f"""
+<h2>Comparison vs {comparison.reference_model}</h2>
+<div class="verdict"><strong>Verdict:</strong> {comparison.verdict}</div>
+<table>
+  <tr><th>Projection</th>
+      <th>γ (this)</th><th>γ (ref)</th><th>Δγ</th>
+      <th>k95/dim (this)</th><th>k95/dim (ref)</th><th>Δ k95/dim</th></tr>
+  {''.join(rows)}
+</table>
+{f'<ul>{rationale_html}</ul>' if rationale_html else ''}
+"""
+
+
+def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=None) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -260,6 +293,7 @@ def report_to_html(report, path: Path, *, embed_png: bool = True) -> None:
         depth_law_rows="\n  ".join(dl_rows) if dl_rows else "<tr><td colspan='6'>—</td></tr>",
         layer_rows="\n  ".join(layer_rows),
         png_embed=png_embed,
+        comparison_section=_comparison_html(comparison),
     )
     with open(path, "w") as f:
         f.write(html)

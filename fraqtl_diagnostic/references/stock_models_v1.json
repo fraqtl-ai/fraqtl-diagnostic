@@ -1,0 +1,172 @@
+{
+  "version": "0.1",
+  "calibration": "wikitext-2-raw-v1 train (64 seqs \u00d7 512 tokens)",
+  "reference_models": {
+    "Qwen/Qwen2.5-14B": {
+      "down_proj": {
+        "n_layers": 48,
+        "gamma_median": 0.794587830025107,
+        "gamma_p10": 0.7519688501454989,
+        "gamma_p90": 0.9562410286574186,
+        "k95_ratio_median": 0.4366319444444444,
+        "depth_law_slope": -0.4076760446506491,
+        "depth_law_intercept": 1.066951036662427,
+        "depth_law_r2": 0.2149394623097245
+      },
+      "o_proj": {
+        "n_layers": 48,
+        "gamma_median": 0.49953558697451256,
+        "gamma_p10": 0.3814574090822939,
+        "gamma_p90": 0.6926141746751798,
+        "k95_ratio_median": 0.38525390625,
+        "depth_law_slope": -0.2582337102616595,
+        "depth_law_intercept": 0.6589542658526732,
+        "depth_law_r2": 0.2423237334333399
+      }
+    },
+    "Qwen/Qwen2.5-3B": {
+      "down_proj": {
+        "n_layers": 36,
+        "gamma_median": 0.6725864022699067,
+        "gamma_p10": 0.6255443113207662,
+        "gamma_p90": 1.1056101205583508,
+        "k95_ratio_median": 0.4102470930232558,
+        "depth_law_slope": -0.5880436545345998,
+        "depth_law_intercept": 1.0844081660260585,
+        "depth_law_r2": 0.3949131716771145
+      },
+      "o_proj": {
+        "n_layers": 36,
+        "gamma_median": 0.35086741981025615,
+        "gamma_p10": 0.24344647837993239,
+        "gamma_p90": 0.48509275840225063,
+        "k95_ratio_median": 0.3564453125,
+        "depth_law_slope": -0.2276932855088621,
+        "depth_law_intercept": 0.47384026527458073,
+        "depth_law_r2": 0.41502231666490386
+      }
+    },
+    "Qwen/Qwen2.5-7B": {
+      "down_proj": {
+        "n_layers": 28,
+        "gamma_median": 0.9130994852495964,
+        "gamma_p10": 0.872145277757437,
+        "gamma_p90": 0.985333388650187,
+        "k95_ratio_median": 0.3546505489864865,
+        "depth_law_slope": -0.0799614939245832,
+        "depth_law_intercept": 0.9707931384746341,
+        "depth_law_r2": 0.061956457409053645
+      },
+      "o_proj": {
+        "n_layers": 28,
+        "gamma_median": 0.43061700543267367,
+        "gamma_p10": 0.33243650436155653,
+        "gamma_p90": 0.568159775914,
+        "k95_ratio_median": 0.3872767857142857,
+        "depth_law_slope": -0.24324135707592148,
+        "depth_law_intercept": 0.5539239080849964,
+        "depth_law_r2": 0.45440034846584043
+      }
+    },
+    "TinyLlama/TinyLlama-1.1B-Chat-v1.0": {
+      "down_proj": {
+        "n_layers": 22,
+        "gamma_median": 0.3829226677004873,
+        "gamma_p10": 0.3224743730191444,
+        "gamma_p90": 0.5911926707322321,
+        "k95_ratio_median": 0.6673473011363636,
+        "depth_law_slope": -0.28240379748272765,
+        "depth_law_intercept": 0.554865344934889,
+        "depth_law_r2": 0.7751500117426103
+      },
+      "o_proj": {
+        "n_layers": 22,
+        "gamma_median": 0.2660649567232944,
+        "gamma_p10": 0.19977449146772425,
+        "gamma_p90": 0.5782954243607084,
+        "k95_ratio_median": 0.451904296875,
+        "depth_law_slope": -0.4856389704398315,
+        "depth_law_intercept": 0.5763748562886661,
+        "depth_law_r2": 0.7830135691781387
+      }
+    },
+    "allenai/OLMoE-1B-7B-0924": {
+      "o_proj": {
+        "n_layers": 16,
+        "gamma_median": 0.5124786286061478,
+        "gamma_p10": 0.40652133743737584,
+        "gamma_p90": 0.9014249252470539,
+        "k95_ratio_median": 0.409912109375,
+        "depth_law_slope": -0.40149211418249325,
+        "depth_law_intercept": 0.830236012587052,
+        "depth_law_r2": 0.2342417046945232
+      }
+    },
+    "meta-llama/Llama-3.2-3B": {
+      "down_proj": {
+        "n_layers": 28,
+        "gamma_median": 0.587747968723688,
+        "gamma_p10": 0.5677724335655966,
+        "gamma_p90": 0.6947064863200896,
+        "k95_ratio_median": 0.4576416015625,
+        "depth_law_slope": -0.1939932435412982,
+        "depth_law_intercept": 0.7157802644529533,
+        "depth_law_r2": 0.4408290913184485
+      },
+      "o_proj": {
+        "n_layers": 28,
+        "gamma_median": 0.4576826837042285,
+        "gamma_p10": 0.3809147764431898,
+        "gamma_p90": 0.6232840507285988,
+        "k95_ratio_median": 0.32340494791666663,
+        "depth_law_slope": -0.019020366009648293,
+        "depth_law_intercept": 0.4954911939749369,
+        "depth_law_r2": 0.0020327710409339117
+      }
+    },
+    "microsoft/Phi-3-mini-4k-instruct": {
+      "down_proj": {
+        "n_layers": 32,
+        "gamma_median": 0.4457210390082472,
+        "gamma_p10": 0.40150781190155527,
+        "gamma_p90": 0.6547871651361933,
+        "k95_ratio_median": 0.63690185546875,
+        "depth_law_slope": -0.23565550536957183,
+        "depth_law_intercept": 0.6039133208960629,
+        "depth_law_r2": 0.4059256298887478
+      },
+      "o_proj": {
+        "n_layers": 32,
+        "gamma_median": 0.37309145435500435,
+        "gamma_p10": 0.3209401519364937,
+        "gamma_p90": 0.6349183001850711,
+        "k95_ratio_median": 0.50537109375,
+        "depth_law_slope": -0.2586633355894375,
+        "depth_law_intercept": 0.5521395536750393,
+        "depth_law_r2": 0.4303107838849658
+      }
+    },
+    "mistralai/Mistral-7B-v0.1": {
+      "down_proj": {
+        "n_layers": 32,
+        "gamma_median": 0.5852337713756514,
+        "gamma_p10": 0.5551743029708913,
+        "gamma_p90": 0.6382107664386611,
+        "k95_ratio_median": 0.5404227120535714,
+        "depth_law_slope": -0.060597414021422845,
+        "depth_law_intercept": 0.6286377134413231,
+        "depth_law_r2": 0.13148023809803433
+      },
+      "o_proj": {
+        "n_layers": 32,
+        "gamma_median": 0.38604319875410986,
+        "gamma_p10": 0.30910959367621393,
+        "gamma_p90": 0.5245694328253071,
+        "k95_ratio_median": 0.4329833984375,
+        "depth_law_slope": -0.08751416682187299,
+        "depth_law_intercept": 0.4584197467531093,
+        "depth_law_r2": 0.0487805402021515
+      }
+    }
+  }
+}

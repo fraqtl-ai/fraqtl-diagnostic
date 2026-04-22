@@ -52,9 +52,9 @@ class DiagnosticReport:
         from .report import report_to_json
         report_to_json(self, Path(path))
 
-    def to_html(self, path: str | Path) -> None:
+    def to_html(self, path: str | Path, *, comparison=None) -> None:
         from .report import report_to_html
-        report_to_html(self, Path(path))
+        report_to_html(self, Path(path), comparison=comparison)
 
     def to_png(self, path: str | Path) -> None:
         from .report import report_to_png

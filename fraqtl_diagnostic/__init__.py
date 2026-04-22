@@ -14,6 +14,15 @@ Typical use:
     >>> report.to_html('llama-3.2-1b_fingerprint.html')
 """
 from .api import analyze, DiagnosticReport
+from .compare import compare_to_reference, ComparisonResult
+from .references import list_reference_models
 from .version import __version__
 
-__all__ = ["analyze", "DiagnosticReport", "__version__"]
+__all__ = [
+    "analyze",
+    "DiagnosticReport",
+    "compare_to_reference",
+    "ComparisonResult",
+    "list_reference_models",
+    "__version__",
+]

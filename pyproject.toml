@@ -44,3 +44,6 @@ fraqtl = "fraqtl_diagnostic.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["fraqtl_diagnostic*"]
+
+[tool.setuptools.package-data]
+"fraqtl_diagnostic.references" = ["*.json"]
