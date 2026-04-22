@@ -14,7 +14,8 @@ Works on any HuggingFace-compatible transformer. ~3–5 min on an A100 for a 1B 
 ## Install
 
 ```bash
-pip install fraqtl-diagnostic
+pip install fraqtl-diagnostic           # (once v0.1 lands on PyPI)
+pip install -e /path/to/diagnostic-public  # editable install from source
 ```
 
 ## Use
@@ -28,6 +29,24 @@ from fraqtl_diagnostic import analyze
 report = analyze("meta-llama/Llama-3.2-1B-Instruct")
 print(report.summary())
 report.to_html("llama-1b_fingerprint.html")
+```
+
+## Try it on your GPU in one command (Modal)
+
+If you don't want to fight Python-env dependencies locally, the fastest way
+to try the tool on a real model is via Modal (free tier gives you an A100):
+
+```bash
+# one-time: `pip install modal && modal setup`
+# assumes a Modal secret named `huggingface` with an HF token
+
+cd diagnostic-public/
+modal run tests/modal_try.py --model-id Qwen/Qwen2.5-0.5B
+modal run tests/modal_try.py --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0
+modal run tests/modal_try.py --model-id mistralai/Mistral-7B-v0.1 --n-seqs 32 --seq-len 512
+
+# pull the report back:
+modal volume get fraqtl-hf-cache fraqtl-results/diagnostic-smoke ./reports/
 ```
 
 ## What you get

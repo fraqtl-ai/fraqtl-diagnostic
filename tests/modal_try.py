@@ -1,13 +1,16 @@
-"""Modal smoke test — runs the full analyze() pipeline on Llama-3.2-1B-Instruct.
+"""Modal smoke / try-it runner — runs the full analyze() pipeline on any HF model.
 
-Confirms:
-  - HF model loads and we find transformer layers
-  - Hessian capture + eigendecomposition works end-to-end
-  - γ / knee / k95 / depth-law / estimator all populate
-  - JSON + HTML + PNG reports write without error
+Default: Llama-3.2-1B-Instruct (needs HF auth token in the Modal `huggingface` secret).
+Override with any open HF id:
 
-Usage:
     modal run tests/modal_smoke_llama_1b.py
+    modal run tests/modal_smoke_llama_1b.py --model-id mistralai/Mistral-7B-v0.1
+    modal run tests/modal_smoke_llama_1b.py --model-id Qwen/Qwen2.5-0.5B --n-seqs 16 --seq-len 256
+    modal run tests/modal_smoke_llama_1b.py --model-id TinyLlama/TinyLlama-1.1B-Chat-v1.0
+
+Outputs JSON + HTML + PNG to the fraqtl-hf-cache volume under
+/cache/fraqtl-results/diagnostic-smoke/<model>_fingerprint.{json,html,png}.
+Use `modal volume get fraqtl-hf-cache fraqtl-results/diagnostic-smoke .` to pull locally.
 """
 import modal
 import pathlib
@@ -36,29 +39,38 @@ vol = modal.Volume.from_name("fraqtl-hf-cache", create_if_missing=True)
 @app.function(
     image=image,
     gpu="A100-40GB",
-    timeout=2400,
+    timeout=3600,
     volumes={"/cache": vol},
     secrets=[modal.Secret.from_name("huggingface")],
 )
-def smoke():
+def smoke(
+    model_id: str = "meta-llama/Llama-3.2-1B-Instruct",
+    n_seqs: int = 16,
+    seq_len: int = 256,
+    projections: str = "down_proj,o_proj",
+    layer_limit: int | None = None,
+    trust_remote_code: bool = False,
+):
     import os
     import sys
     sys.path.insert(0, "/root")
 
-    # HF cache on volume
+    # HF cache on volume — weights persist across runs
     os.environ.setdefault("HF_HOME", "/cache/hf")
 
     from fraqtl_diagnostic import analyze, __version__
 
-    model_id = "meta-llama/Llama-3.2-1B-Instruct"
-    print(f"fraqtl-diagnostic v{__version__} smoke on {model_id}")
+    print(f"fraqtl-diagnostic v{__version__}  on  {model_id}")
     print("-" * 70)
 
+    projs = tuple(p.strip() for p in projections.split(",") if p.strip())
     report = analyze(
         model_id,
-        n_seqs=16,          # smaller for smoke
-        seq_len=256,
-        projections=("down_proj", "o_proj"),
+        n_seqs=n_seqs,
+        seq_len=seq_len,
+        projections=projs,
+        layer_limit=layer_limit,
+        trust_remote_code=trust_remote_code,
         progress=True,
     )
 
@@ -102,8 +114,29 @@ def smoke():
 
 
 @app.local_entrypoint()
-def main():
-    r = smoke.remote()
-    print("\n== SMOKE RESULT ==")
+def main(
+    model_id: str = "meta-llama/Llama-3.2-1B-Instruct",
+    n_seqs: int = 16,
+    seq_len: int = 256,
+    projections: str = "down_proj,o_proj",
+    layer_limit: int = None,
+    trust_remote_code: bool = False,
+):
+    r = smoke.remote(
+        model_id=model_id,
+        n_seqs=n_seqs,
+        seq_len=seq_len,
+        projections=projections,
+        layer_limit=layer_limit,
+        trust_remote_code=trust_remote_code,
+    )
+    print("\n== RESULT ==")
     for k, v in r.items():
         print(f"  {k}: {v}")
+    safe = model_id.replace("/", "_")
+    print()
+    print("To pull reports to this machine:")
+    print(f"  modal volume get fraqtl-hf-cache "
+          f"fraqtl-results/diagnostic-smoke/{safe}_fingerprint.png ./")
+    print(f"  modal volume get fraqtl-hf-cache "
+          f"fraqtl-results/diagnostic-smoke/{safe}_fingerprint.html ./")
