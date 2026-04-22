@@ -100,24 +100,27 @@ def smoke(
 
     vol.commit()
 
-    # Sanity checks
+    # Sanity checks (measurement-only; no budget_bits since v0.1 is pure measurement)
     assert report.fingerprints, "no fingerprints produced"
     assert any(f.gamma is not None for f in report.fingerprints), "no γ fit succeeded"
     assert report.depth_laws, "no depth-law fit succeeded"
-    assert 2.0 <= report.estimate.budget_bits_aggressive <= 5.0
+    assert report.summary_stats.n_fingerprints > 0
 
     print(f"\nJSON : {json_path}  ({json_path.stat().st_size/1024:.1f} KB)")
     print(f"HTML : {html_path}  ({html_path.stat().st_size/1024:.1f} KB)")
     print(f"PNG  : {png_path}  ({png_path.stat().st_size/1024:.1f} KB)")
 
+    s = report.summary_stats
     return {
         "status": "ok",
-        "n_fingerprints": len(report.fingerprints),
+        "n_fingerprints": s.n_fingerprints,
         "n_depth_laws": len(report.depth_laws),
-        "mean_gamma": report.estimate.mean_gamma,
-        "headroom": report.estimate.headroom_score,
-        "budget_balanced": report.estimate.budget_bits_balanced,
-        "headline": report.estimate.headline,
+        "mean_gamma": (None if s.gamma_summary_suppressed else s.mean_gamma),
+        "gamma_suppressed": s.gamma_summary_suppressed,
+        "mean_k95_ratio": s.mean_k95_ratio,
+        "regime_counts": s.regime_counts,
+        "fit_quality_counts": s.fit_quality_counts,
+        "d_star_by_bits": s.d_star_by_bits,
     }
 
 
