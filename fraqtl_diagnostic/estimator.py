@@ -35,6 +35,9 @@ class DiagnosticSummary:
     d_star_by_bits: dict             # {"2": geomean D*(2 b/w), "3": ..., "4": ...}
     gamma_summary_suppressed: bool   # True if >10% of layers outside stretched_exp
     n_fingerprints: int
+    # plain-English TL;DR (pre-rendered at summarize-time so the same text goes to CLI + HTML + JSON)
+    tldr_verdict: str = ""           # e.g. "Normal transformer, moderately compressible."
+    tldr_lines: list[str] = field(default_factory=list)   # 2-4 supporting bullets
     cta: str = (
         "This is a measurement tool. For actual compression outcomes, "
         "visit https://fraqtl.ai"
@@ -89,6 +92,15 @@ def summarize(fingerprints: Sequence[LayerFingerprint]) -> DiagnosticSummary:
         if vals:
             d_star_by_bits[bit] = float(np.exp(np.mean(np.log(vals))))
 
+    tldr_verdict, tldr_lines = _build_tldr(
+        n_fingerprints=len(fingerprints),
+        regime_counts=regime_counts,
+        fit_quality_counts=fit_quality_counts,
+        mean_k95=mean_k95,
+        mean_gamma=mean_gamma,
+        suppress_gamma=suppress_gamma,
+    )
+
     return DiagnosticSummary(
         mean_gamma=mean_gamma,
         mean_k95_ratio=mean_k95,
@@ -97,7 +109,81 @@ def summarize(fingerprints: Sequence[LayerFingerprint]) -> DiagnosticSummary:
         d_star_by_bits=d_star_by_bits,
         gamma_summary_suppressed=bool(suppress_gamma),
         n_fingerprints=len(fingerprints),
+        tldr_verdict=tldr_verdict,
+        tldr_lines=tldr_lines,
     )
+
+
+def _build_tldr(*, n_fingerprints, regime_counts, fit_quality_counts,
+                mean_k95, mean_gamma, suppress_gamma):
+    """Render plain-English TL;DR from the aggregated stats.
+
+    Goal: give a non-ML-engineer reader 3-4 lines that say what the tool found
+    and what to do with it — without overclaiming predictions.
+    """
+    n_stretched = regime_counts.get("stretched_exp", 0)
+    n_comp = regime_counts.get("compressed_exp", 0)
+    n_super = regime_counts.get("super_gaussian", 0)
+    n_near = regime_counts.get("near_exponential", 0)
+    n_unfit = regime_counts.get("unfit", 0) + regime_counts.get(None, 0)
+    n_total = n_fingerprints
+    n_good = fit_quality_counts.get("good", 0)
+    n_poor = fit_quality_counts.get("poor", 0)
+
+    stretched_frac = n_stretched / n_total if n_total else 0
+    poor_frac = n_poor / n_total if n_total else 0
+
+    # ─── Headline verdict ───
+    if stretched_frac >= 0.85 and poor_frac < 0.15:
+        shape_word = "Normal"
+    elif stretched_frac >= 0.60:
+        shape_word = "Mostly normal (some layers unusual)"
+    elif n_super > 0 or poor_frac > 0.3:
+        shape_word = "Unusual"
+    else:
+        shape_word = "Mixed"
+
+    if mean_k95 < 0.20:
+        compr_word = "highly compressible"
+    elif mean_k95 < 0.40:
+        compr_word = "moderately compressible"
+    else:
+        compr_word = "limited compression headroom"
+
+    verdict = f"{shape_word} transformer, {compr_word}."
+
+    # ─── Supporting bullets ───
+    lines: list[str] = []
+    lines.append(
+        f"{n_stretched}/{n_total} layers fall in the standard stretched-exponential class (KWW). "
+        f"{n_near + n_comp + n_super} in other regimes, {n_unfit} unfit."
+    )
+    lines.append(
+        f"Effective rank is {mean_k95:.0%} of dim — "
+        + (
+            "rank-reduction compression has room."
+            if mean_k95 < 0.30 else
+            "most eigendirections are active; rank-based compression is tight."
+        )
+    )
+    if suppress_gamma:
+        lines.append(
+            "Layers split across multiple regimes — single-number γ is not meaningful. "
+            "See the per-layer regime column."
+        )
+    elif not (mean_gamma != mean_gamma):  # not NaN
+        lines.append(
+            f"Stretched-exp γ is {mean_gamma:.2f} — "
+            + ("steep decay, fast compression recovery." if mean_gamma < 0.5
+               else "near-exponential decay, harder on the head.")
+        )
+    if poor_frac > 0.15:
+        lines.append(
+            f"{n_poor}/{n_total} layers have poor-quality γ fits — "
+            "these are excluded from the summary; check per-layer table."
+        )
+
+    return verdict, lines
 
 
 # Back-compat alias for older callers that used `estimate_compression`.

@@ -48,12 +48,27 @@ class DiagnosticReport:
             else f"  mean γ             : {s.mean_gamma:.3f}  "
                  f"(stretched_exp regime, non-poor fits only)"
         )
+
+        # TL;DR block — plain-English, non-expert-friendly
+        tldr: list[str] = []
+        if s.tldr_verdict:
+            tldr.append("")
+            tldr.append("━━ TL;DR ━━")
+            tldr.append(f"  {s.tldr_verdict}")
+            for line in s.tldr_lines:
+                tldr.append(f"    · {line}")
+
         lines = [
             f"fraQtl Diagnostic v{self.version}",
             f"  model              : {self.model_id}",
             f"  layers             : {self.n_layers}",
             f"  projections        : {', '.join(self.projections)}",
             f"  fingerprints       : {s.n_fingerprints}",
+        ]
+        lines.extend(tldr)
+        lines.append("")
+        lines.append("━━ Technical details ━━")
+        lines.extend([
             gamma_line,
             f"  mean k95/dim       : {s.mean_k95_ratio:.2%}",
             f"  regimes            : {regime_str}",
@@ -61,7 +76,7 @@ class DiagnosticReport:
             f"{s.fit_quality_counts.get('good', 0)} good / "
             f"{s.fit_quality_counts.get('moderate', 0)} moderate / "
             f"{s.fit_quality_counts.get('poor', 0)} poor",
-        ]
+        ])
         # Shannon D*(R) ceiling — theoretical, not a prediction
         if s.d_star_by_bits:
             d_parts = []

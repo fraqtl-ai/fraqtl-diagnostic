@@ -165,7 +165,9 @@ _HTML_TEMPLATE = """<!doctype html>
   {elapsed:.1f}s on {device}
 </p>
 
+<h2>TL;DR</h2>
 <div class="headline">{headline}</div>
+<p class="meta">{cta}</p>
 
 <h2>Measurement summary</h2>
 <table>
@@ -305,9 +307,12 @@ def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=Non
         for b, v in sorted(s.d_star_by_bits.items())
     ) or "<tr><td colspan='2'>—</td></tr>"
 
+    tldr_bullets = "".join(f"<li>{line}</li>" for line in s.tldr_lines)
     headline = (
-        f"{report.n_layers} layers across {', '.join(report.projections)}. "
-        f"Measurement complete. {s.cta}"
+        f"<strong>{s.tldr_verdict}</strong>"
+        f"<ul style='margin-top: 0.4em'>{tldr_bullets}</ul>"
+        if s.tldr_verdict else
+        f"{report.n_layers} layers across {', '.join(report.projections)}. Measurement complete."
     )
 
     html = _HTML_TEMPLATE.format(
@@ -318,6 +323,7 @@ def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=Non
         elapsed=report.meta.get("elapsed_s", float("nan")),
         device=report.meta.get("device", "?"),
         headline=headline,
+        cta=s.cta,
         n_fingerprints=s.n_fingerprints,
         mean_gamma_cell=mean_gamma_cell,
         mean_k95=s.mean_k95_ratio,
