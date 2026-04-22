@@ -89,22 +89,26 @@ def _fig_k95(ax, fingerprints, projection):
     ax.set_ylim(0, max(k95) * 1.2 if k95 else 1.0)
 
 
-def _fig_potential(ax, estimate):
+def _fig_summary_panel(ax, s):
     ax.axis("off")
+    mean_g = "suppressed" if s.gamma_summary_suppressed else f"{s.mean_gamma:.3f}"
     lines = [
-        "Compression potential",
+        "Measurement summary",
         "",
-        f"  headroom    : {estimate.headroom_score:.2f}",
-        f"  mean γ       : {estimate.mean_gamma:.3f}",
-        f"  mean k95/dim : {estimate.mean_k95_ratio:.2%}",
+        f"  fingerprints  : {s.n_fingerprints}",
+        f"  mean γ        : {mean_g}",
+        f"  mean k95/dim  : {s.mean_k95_ratio:.2%}",
         "",
-        "Suggested bit budgets (Shannon-based):",
-        f"  aggressive   : {estimate.budget_bits_aggressive:.2f} b/w",
-        f"  balanced     : {estimate.budget_bits_balanced:.2f} b/w",
-        f"  conservative : {estimate.budget_bits_conservative:.2f} b/w",
+        "Regimes:",
     ]
+    for k, v in sorted(s.regime_counts.items(), key=lambda kv: -kv[1]):
+        lines.append(f"  {k:18s} {v:3d}")
+    lines.append("")
+    lines.append("Shannon D*(R):")
+    for b, v in sorted(s.d_star_by_bits.items()):
+        lines.append(f"  R = {b} b/w : {v:.3e}")
     ax.text(0.02, 0.95, "\n".join(lines), va="top", ha="left", family="monospace",
-            fontsize=11, transform=ax.transAxes)
+            fontsize=10, transform=ax.transAxes)
 
 
 def report_to_png(report, path: Path, *, figsize=(14, 10)) -> None:
@@ -121,7 +125,7 @@ def report_to_png(report, path: Path, *, figsize=(14, 10)) -> None:
     _fig_spectrum_overlay(axes[0][0], report.fingerprints, primary)
     _fig_gamma_vs_depth(axes[0][1], report.fingerprints, report.depth_laws, primary)
     _fig_k95(axes[1][0], report.fingerprints, primary)
-    _fig_potential(axes[1][1], report.estimate)
+    _fig_summary_panel(axes[1][1], report.summary_stats)
     fig.suptitle(f"fraQtl Diagnostic — {report.model_id}", fontsize=13)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(path, dpi=120)
@@ -163,15 +167,22 @@ _HTML_TEMPLATE = """<!doctype html>
 
 <div class="headline">{headline}</div>
 
-<h2>Compression potential (Shannon-based)</h2>
+<h2>Measurement summary</h2>
 <table>
   <tr><th>Metric</th><th>Value</th></tr>
-  <tr><td>Headroom score (0–1)</td><td>{headroom:.3f}</td></tr>
-  <tr><td>Mean γ (stretched-exp shape)</td><td>{mean_gamma:.3f}</td></tr>
+  <tr><td>Fingerprints (layer × projection)</td><td>{n_fingerprints}</td></tr>
+  <tr><td>Mean γ  (stretched_exp regime, non-poor fits only)</td><td>{mean_gamma_cell}</td></tr>
   <tr><td>Mean k95 / dim</td><td>{mean_k95:.2%}</td></tr>
-  <tr><td>Suggested b/w (aggressive)</td><td>{b_aggr:.2f}</td></tr>
-  <tr><td>Suggested b/w (balanced)</td><td>{b_bal:.2f}</td></tr>
-  <tr><td>Suggested b/w (conservative)</td><td>{b_cons:.2f}</td></tr>
+  <tr><td>Regimes</td><td>{regime_str}</td></tr>
+  <tr><td>Fit quality</td><td>{fit_quality_str}</td></tr>
+</table>
+
+<h2>Shannon rate-distortion ceiling D*(R)</h2>
+<p class="meta">geometric mean over all layers at each bit budget R. <strong>Theoretical floor, not a prediction</strong> —
+  the actual PPL a real compressor achieves depends on the recipe (sign correction, rank protection, etc.).</p>
+<table>
+  <tr><th>R (b/w)</th><th>D*(R) geomean</th></tr>
+  {d_star_rows}
 </table>
 
 <h2>Depth-law fits</h2>
@@ -182,8 +193,8 @@ _HTML_TEMPLATE = """<!doctype html>
 
 <h2>Per-layer fingerprint (first 40)</h2>
 <table>
-  <tr><th>Layer</th><th>Proj</th><th>dim</th><th>γ</th><th>α_tail</th><th>k95</th>
-      <th>k99</th><th>knee</th><th>best fit</th></tr>
+  <tr><th>Layer</th><th>Proj</th><th>dim</th><th>γ</th><th>regime</th><th>fit</th>
+      <th>k95</th><th>k99</th><th>knee</th></tr>
   {layer_rows}
 </table>
 
@@ -263,11 +274,11 @@ def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=Non
             f"<td>{f.projection}</td>"
             f"<td>{f.dim}</td>"
             f"<td>{_format_value(f.gamma)}</td>"
-            f"<td>{_format_value(f.alpha_tail, '{:.2f}')}</td>"
+            f"<td>{f.regime or '—'}</td>"
+            f"<td>{f.fit_quality}</td>"
             f"<td>{f.k95}</td>"
             f"<td>{f.k99}</td>"
-            f"<td>{'—' if f.knee is None else f.knee}</td>"
-            f"<td>{f.best_family or '—'}</td></tr>"
+            f"<td>{'—' if f.knee is None else f.knee}</td></tr>"
         )
 
     png_embed = ""
@@ -276,6 +287,29 @@ def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=Non
         report_to_png(report, png_path)
         png_embed = f'<p><img src="{png_path.name}" alt="diagnostic figure"></p>'
 
+    s = report.summary_stats
+    mean_gamma_cell = (
+        "suppressed (&gt;10% layers outside stretched_exp or poor fit)"
+        if s.gamma_summary_suppressed else f"{s.mean_gamma:.3f}"
+    )
+    regime_str = ", ".join(
+        f"{v} {k}" for k, v in sorted(s.regime_counts.items(), key=lambda kv: -kv[1])
+    ) if s.regime_counts else "—"
+    fit_quality_str = (
+        f"{s.fit_quality_counts.get('good', 0)} good · "
+        f"{s.fit_quality_counts.get('moderate', 0)} moderate · "
+        f"{s.fit_quality_counts.get('poor', 0)} poor"
+    )
+    d_star_rows = "".join(
+        f"<tr><td>{b}</td><td>{v:.3e}</td></tr>"
+        for b, v in sorted(s.d_star_by_bits.items())
+    ) or "<tr><td colspan='2'>—</td></tr>"
+
+    headline = (
+        f"{report.n_layers} layers across {', '.join(report.projections)}. "
+        f"Measurement complete. {s.cta}"
+    )
+
     html = _HTML_TEMPLATE.format(
         model_id=report.model_id,
         version=report.version,
@@ -283,13 +317,13 @@ def report_to_html(report, path: Path, *, embed_png: bool = True, comparison=Non
         projections=", ".join(report.projections),
         elapsed=report.meta.get("elapsed_s", float("nan")),
         device=report.meta.get("device", "?"),
-        headline=report.estimate.headline,
-        headroom=report.estimate.headroom_score,
-        mean_gamma=report.estimate.mean_gamma,
-        mean_k95=report.estimate.mean_k95_ratio,
-        b_aggr=report.estimate.budget_bits_aggressive,
-        b_bal=report.estimate.budget_bits_balanced,
-        b_cons=report.estimate.budget_bits_conservative,
+        headline=headline,
+        n_fingerprints=s.n_fingerprints,
+        mean_gamma_cell=mean_gamma_cell,
+        mean_k95=s.mean_k95_ratio,
+        regime_str=regime_str,
+        fit_quality_str=fit_quality_str,
+        d_star_rows=d_star_rows,
         depth_law_rows="\n  ".join(dl_rows) if dl_rows else "<tr><td colspan='6'>—</td></tr>",
         layer_rows="\n  ".join(layer_rows),
         png_embed=png_embed,

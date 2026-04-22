@@ -15,7 +15,7 @@ from ._model_io import load_model, load_wikitext_calibration, find_target_module
 from .spectrum import capture_single_hessian, eigendecompose
 from .shannon import LayerFingerprint, fingerprint_layer, aggregate_per_head
 from .depth_law import DepthLawFit, fit_depth_law
-from .estimator import CompressionEstimate, estimate_compression
+from .estimator import DiagnosticSummary, summarize
 
 
 @dataclass
@@ -26,41 +26,55 @@ class DiagnosticReport:
     projections: list[str]
     fingerprints: list[LayerFingerprint]
     depth_laws: list[DepthLawFit]
-    estimate: CompressionEstimate
+    summary_stats: DiagnosticSummary
     meta: dict = field(default_factory=dict)
 
+    @property
+    def estimate(self) -> DiagnosticSummary:
+        """Back-compat alias — older callers used `.estimate`."""
+        return self.summary_stats
+
     def summary(self) -> str:
-        # regime distribution across layers
-        regimes: dict[str, int] = {}
-        for f in self.fingerprints:
-            if f.regime:
-                regimes[f.regime] = regimes.get(f.regime, 0) + 1
-        regime_str = ", ".join(f"{v} {k}" for k, v in sorted(regimes.items())) if regimes else "—"
+        s = self.summary_stats
+
+        regime_str = ", ".join(
+            f"{v} {k}" for k, v in sorted(s.regime_counts.items(), key=lambda kv: -kv[1])
+        ) if s.regime_counts else "—"
 
         gamma_line = (
-            f"  mean γ            : suppressed  [>10% of layers fall outside Kohlrausch "
-            f"regime (0,1); see per-layer regime tags]"
-            if self.estimate.gamma_summary_suppressed
-            else f"  mean γ            : {self.estimate.mean_gamma:.3f}   (across both projections)"
+            f"  mean γ             : suppressed  [>10% of layers fall outside the "
+            f"stretched_exp regime or have poor fit quality; see per-layer tags]"
+            if s.gamma_summary_suppressed
+            else f"  mean γ             : {s.mean_gamma:.3f}  "
+                 f"(stretched_exp regime, non-poor fits only)"
         )
         lines = [
             f"fraQtl Diagnostic v{self.version}",
-            f"  model             : {self.model_id}",
-            f"  layers            : {self.n_layers}",
-            f"  projections       : {', '.join(self.projections)}",
+            f"  model              : {self.model_id}",
+            f"  layers             : {self.n_layers}",
+            f"  projections        : {', '.join(self.projections)}",
+            f"  fingerprints       : {s.n_fingerprints}",
             gamma_line,
-            f"  regimes           : {regime_str}",
-            f"  mean k95/dim      : {self.estimate.mean_k95_ratio:.2%}",
-            f"  headroom score    : {self.estimate.headroom_score:.2f}",
-            f"  suggested b/w     : {self.estimate.budget_bits_balanced:.1f} (balanced)"
-            f" / {self.estimate.budget_bits_aggressive:.1f} (aggressive)",
+            f"  mean k95/dim       : {s.mean_k95_ratio:.2%}",
+            f"  regimes            : {regime_str}",
+            f"  fit quality        : "
+            f"{s.fit_quality_counts.get('good', 0)} good / "
+            f"{s.fit_quality_counts.get('moderate', 0)} moderate / "
+            f"{s.fit_quality_counts.get('poor', 0)} poor",
         ]
+        # Shannon D*(R) ceiling — theoretical, not a prediction
+        if s.d_star_by_bits:
+            d_parts = []
+            for b in ("2", "3", "4"):
+                if b in s.d_star_by_bits:
+                    d_parts.append(f"R={b}: {s.d_star_by_bits[b]:.3e}")
+            lines.append(f"  Shannon D*(R)      : " + "   ".join(d_parts)
+                         + "   [theoretical floor, geomean over layers]")
         for dl in self.depth_laws:
             if dl.r2 < 0.3:
-                # no trend detectable — honest about it rather than print a meaningless fit
                 lines.append(
                     f"  depth-law {dl.projection:10s}  "
-                    f"uninformative (R² = {dl.r2:.2f}) — γ is nearly flat across depth, "
+                    f"uninformative (R² = {dl.r2:.2f}) — γ nearly flat across depth, "
                     f"median γ = {dl.gamma_p50:.3f}"
                 )
             else:
@@ -70,6 +84,8 @@ class DiagnosticReport:
                     f"R² = {dl.r2:.2f}   [{dl.consistency_flag}]"
                     f"   (depth ∈ [0,1])"
                 )
+        lines.append("")
+        lines.append(f"  {s.cta}")
         return "\n".join(lines)
 
     def to_json(self, path: str | Path) -> None:
@@ -184,7 +200,7 @@ def analyze(
         if dl is not None:
             depth_laws.append(dl)
 
-    estimate = estimate_compression(fingerprints)
+    summary_stats = summarize(fingerprints)
 
     # free model
     del model
@@ -209,6 +225,6 @@ def analyze(
         projections=list(projections),
         fingerprints=fingerprints,
         depth_laws=depth_laws,
-        estimate=estimate,
+        summary_stats=summary_stats,
         meta=meta,
     )

@@ -1,22 +1,24 @@
-"""Compression potential estimate — headline number for the report.
+"""Descriptive summary of a DiagnosticReport — measurement-only.
 
-Maps the Shannon ceiling (D*(R) at several bit budgets) into a qualitative
-"compression budget" label:
+v0.1 scope: aggregate the per-layer fingerprints into a layer-level summary.
+No bit-budget predictions, no "headroom" tiers, no "suggested b/w." Those
+require atlas-validated regression against actual compression outcomes and
+ship in v0.2 alongside Paper 3.
 
-  - `headroom`   : ratio of D*(2 b/w) to D*(4 b/w). High headroom = spectrum
-                   concentrates mass on few dims → aggressive compression ok.
-  - `budget_bits`: recommended b/w for a given target loss level. This is a
-                   pure-math estimate from the Shannon ceiling — does NOT
-                   include recipe-specific gains (sign correction, V theorem,
-                   per-model calibration). Those are fraQtl's closed engine.
+What we DO report:
+  - mean γ across stretched_exp regime layers only (suppressed if >10% out)
+  - mean k95/dim (effective rank ratio)
+  - regime distribution (counts of stretched/near-exp/compressed/etc.)
+  - fit-quality distribution
+  - Shannon D*(R) table geomean across layers, at R ∈ {2, 3, 4}
 
-The estimator intentionally does NOT return a "predicted PPL" — predicting PPL
-requires calibration to a specific recipe. We return the information-theoretic
-ceiling + recommended budget and leave the actual PPL to a downstream
-compression run.
+What we DO NOT report:
+  - Predicted PPL / bit-budget recommendations
+  - "Aggressive / balanced / conservative" tiers
+  - Headroom score
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence
 
 import numpy as np
@@ -25,27 +27,33 @@ from .shannon import LayerFingerprint
 
 
 @dataclass
-class CompressionEstimate:
-    budget_bits_aggressive: float     # recommended b/w for "aggressive" tier
-    budget_bits_balanced: float       # recommended b/w for "balanced" tier
-    budget_bits_conservative: float   # recommended b/w for "conservative" tier
-    mean_k95_ratio: float             # mean k95/dim — lower = more compressible
-    mean_gamma: float                 # mean KWW γ across layers (shape)
-    headroom_score: float             # 0–1, higher = more compressible
-    headline: str                     # one-line human-readable summary
-    gamma_summary_suppressed: bool = False   # True if >10% layers fall outside γ ∈ (0,1)
+class DiagnosticSummary:
+    mean_gamma: float                # mean KWW γ across stretched_exp layers only
+    mean_k95_ratio: float            # mean k95/dim across all layers
+    regime_counts: dict              # {regime_name: n_layers}
+    fit_quality_counts: dict         # {"good": N, "moderate": M, "poor": K}
+    d_star_by_bits: dict             # {"2": geomean D*(2 b/w), "3": ..., "4": ...}
+    gamma_summary_suppressed: bool   # True if >10% of layers outside stretched_exp
+    n_fingerprints: int
+    cta: str = (
+        "This is a measurement tool. For actual compression outcomes, "
+        "visit https://fraqtl.ai"
+    )
 
 
-def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> CompressionEstimate:
+# Back-compat alias so any external code that imported the old name keeps working.
+CompressionEstimate = DiagnosticSummary
+
+
+def summarize(fingerprints: Sequence[LayerFingerprint]) -> DiagnosticSummary:
     if not fingerprints:
-        raise ValueError("no fingerprints to estimate from")
+        raise ValueError("no fingerprints to summarize")
 
-    k95_ratios = [f.k95 / f.dim for f in fingerprints]
-    mean_k95 = float(np.mean(k95_ratios))
+    # k95 mean across ALL layers (measurement metric, always valid)
+    k95_ratios = [f.k95 / f.dim for f in fingerprints if f.dim > 0]
+    mean_k95 = float(np.mean(k95_ratios)) if k95_ratios else float("nan")
 
-    # Only include fits with non-poor quality AND stretched_exp regime in the
-    # mean-γ headline. Mixing regimes or including poor fits in a scalar mean
-    # is misleading and what the math-agent reviewer flagged.
+    # mean γ restricted to stretched_exp regime with non-poor fit quality
     inside_kww = [
         f for f in fingerprints
         if f.gamma is not None
@@ -55,51 +63,42 @@ def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> Compressio
     gammas_inside = [f.gamma for f in inside_kww]
     mean_gamma = float(np.mean(gammas_inside)) if gammas_inside else float("nan")
 
-    # Suppression rule: if >10% of layers fall outside the KWW universality
-    # class (compressed_exp, super_gaussian, or poor-quality fits), the scalar
-    # mean γ is not representative and we refuse to publish it as a headline.
+    # Suppression rule: >10% layers out of stretched_exp / poor fit → suppress scalar γ
     fitted = [f for f in fingerprints if f.gamma is not None]
-    n_total = len(fitted)
+    n_fitted = len(fitted)
     n_outside = sum(
         1 for f in fitted
         if f.fit_quality == "poor" or f.regime != "stretched_exp"
     )
-    suppress_gamma = n_total > 0 and (n_outside / n_total) > 0.10
+    suppress_gamma = n_fitted > 0 and (n_outside / n_fitted) > 0.10
 
-    # headroom_score: low k95/dim + low γ → more compressible
-    # k95/dim in [0, 1], γ typically in [0.1, 1.2]. Score = 1 − k95_ratio, penalty
-    # if γ > 0.7 (less stretched = closer to exponential = less compressible head).
-    gamma_penalty = max(0.0, (mean_gamma - 0.7) / 0.5) if not np.isnan(mean_gamma) else 0.0
-    headroom = max(0.0, min(1.0, (1.0 - mean_k95) * (1.0 - 0.5 * gamma_penalty)))
+    # Regime + fit-quality distributions
+    regime_counts: dict[str, int] = {}
+    fit_quality_counts: dict[str, int] = {}
+    for f in fingerprints:
+        key_r = f.regime or "unfit"
+        regime_counts[key_r] = regime_counts.get(key_r, 0) + 1
+        key_q = f.fit_quality or "unfit"
+        fit_quality_counts[key_q] = fit_quality_counts.get(key_q, 0) + 1
 
-    # Bit budgets scaled by headroom. At full headroom: 2.5 / 3.0 / 3.5.
-    # At zero headroom: 3.5 / 4.0 / 4.5.
-    def _budget(base_low, base_high):
-        return base_high - headroom * (base_high - base_low)
+    # D*(R) geomean across layers, at R ∈ {2, 3, 4}
+    d_star_by_bits: dict[str, float] = {}
+    for bit in ("2", "3", "4"):
+        vals = [f.d_star.get(bit) for f in fingerprints if bit in f.d_star]
+        vals = [v for v in vals if v and v > 0]
+        if vals:
+            d_star_by_bits[bit] = float(np.exp(np.mean(np.log(vals))))
 
-    b_aggr = _budget(2.5, 3.5)
-    b_bal = _budget(3.0, 4.0)
-    b_cons = _budget(3.5, 4.5)
-
-    # Headline — plain English, no marketing claims
-    if headroom >= 0.7:
-        tier = "aggressive compression tolerated"
-    elif headroom >= 0.4:
-        tier = "moderate compression tolerated"
-    else:
-        tier = "limited compression headroom"
-    headline = (
-        f"{tier}: suggested {b_bal:.1f} b/w balanced, {b_aggr:.1f} b/w aggressive. "
-        f"mean k95/dim = {mean_k95:.2%}, mean γ = {mean_gamma:.3f}"
-    )
-
-    return CompressionEstimate(
-        budget_bits_aggressive=float(b_aggr),
-        budget_bits_balanced=float(b_bal),
-        budget_bits_conservative=float(b_cons),
-        mean_k95_ratio=mean_k95,
+    return DiagnosticSummary(
         mean_gamma=mean_gamma,
-        headroom_score=float(headroom),
-        headline=headline,
+        mean_k95_ratio=mean_k95,
+        regime_counts=regime_counts,
+        fit_quality_counts=fit_quality_counts,
+        d_star_by_bits=d_star_by_bits,
         gamma_summary_suppressed=bool(suppress_gamma),
+        n_fingerprints=len(fingerprints),
     )
+
+
+# Back-compat alias for older callers that used `estimate_compression`.
+estimate_compression = summarize

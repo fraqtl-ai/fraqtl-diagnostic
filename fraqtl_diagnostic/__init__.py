@@ -15,12 +15,15 @@ Typical use:
 """
 from .api import analyze, DiagnosticReport
 from .compare import compare_to_reference, ComparisonResult
+from .estimator import DiagnosticSummary, summarize
 from .references import list_reference_models
 from .version import __version__
 
 __all__ = [
     "analyze",
     "DiagnosticReport",
+    "DiagnosticSummary",
+    "summarize",
     "compare_to_reference",
     "ComparisonResult",
     "list_reference_models",
