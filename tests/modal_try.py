@@ -50,17 +50,20 @@ def smoke(
     projections: str = "down_proj,o_proj",
     layer_limit: int | None = None,
     trust_remote_code: bool = False,
+    compare_to: str | None = None,
 ):
     import os
     import sys
     sys.path.insert(0, "/root")
 
-    # HF cache on volume — weights persist across runs
     os.environ.setdefault("HF_HOME", "/cache/hf")
 
     from fraqtl_diagnostic import analyze, __version__
+    from fraqtl_diagnostic.compare import compare_to_reference
 
     print(f"fraqtl-diagnostic v{__version__}  on  {model_id}")
+    if compare_to:
+        print(f"will compare to: {compare_to}")
     print("-" * 70)
 
     projs = tuple(p.strip() for p in projections.split(",") if p.strip())
@@ -74,8 +77,13 @@ def smoke(
         progress=True,
     )
 
+    comparison = compare_to_reference(report, compare_to) if compare_to else None
+
     print()
     print(report.summary())
+    if comparison is not None:
+        print()
+        print(comparison.summary())
     print()
 
     # Write reports to the volume so we can inspect them later
@@ -88,7 +96,7 @@ def smoke(
 
     report.to_json(json_path)
     report.to_png(png_path)
-    report.to_html(html_path)
+    report.to_html(html_path, comparison=comparison)
 
     vol.commit()
 
@@ -121,6 +129,7 @@ def main(
     projections: str = "down_proj,o_proj",
     layer_limit: int = None,
     trust_remote_code: bool = False,
+    compare_to: str = None,
 ):
     r = smoke.remote(
         model_id=model_id,
@@ -129,6 +138,7 @@ def main(
         projections=projections,
         layer_limit=layer_limit,
         trust_remote_code=trust_remote_code,
+        compare_to=compare_to,
     )
     print("\n== RESULT ==")
     for k, v in r.items():
