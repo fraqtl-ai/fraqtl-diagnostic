@@ -30,9 +30,10 @@ class CompressionEstimate:
     budget_bits_balanced: float       # recommended b/w for "balanced" tier
     budget_bits_conservative: float   # recommended b/w for "conservative" tier
     mean_k95_ratio: float             # mean k95/dim — lower = more compressible
-    mean_gamma: float                 # mean stretched-exp γ across layers (shape)
+    mean_gamma: float                 # mean KWW γ across layers (shape)
     headroom_score: float             # 0–1, higher = more compressible
     headline: str                     # one-line human-readable summary
+    gamma_summary_suppressed: bool = False   # True if >10% layers fall outside γ ∈ (0,1)
 
 
 def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> CompressionEstimate:
@@ -44,6 +45,13 @@ def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> Compressio
 
     gammas = [f.gamma for f in fingerprints if f.gamma is not None]
     mean_gamma = float(np.mean(gammas)) if gammas else float("nan")
+
+    # Refuse to publish a single-γ headline if the layers are split across
+    # different Kohlrausch regimes — mean becomes meaningless. Reviewer rule:
+    # if >10% of γ fits land outside (0, 1), suppress the scalar summary.
+    n_out = sum(1 for g in gammas if g is not None and (g <= 0 or g >= 1.0))
+    n_total = len(gammas)
+    suppress_gamma = n_total > 0 and (n_out / n_total) > 0.10
 
     # headroom_score: low k95/dim + low γ → more compressible
     # k95/dim in [0, 1], γ typically in [0.1, 1.2]. Score = 1 − k95_ratio, penalty
@@ -80,4 +88,5 @@ def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> Compressio
         mean_gamma=mean_gamma,
         headroom_score=float(headroom),
         headline=headline,
+        gamma_summary_suppressed=bool(suppress_gamma),
     )

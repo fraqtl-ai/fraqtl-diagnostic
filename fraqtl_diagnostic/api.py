@@ -37,12 +37,18 @@ class DiagnosticReport:
                 regimes[f.regime] = regimes.get(f.regime, 0) + 1
         regime_str = ", ".join(f"{v} {k}" for k, v in sorted(regimes.items())) if regimes else "—"
 
+        gamma_line = (
+            f"  mean γ            : suppressed  [>10% of layers fall outside Kohlrausch "
+            f"regime (0,1); see per-layer regime tags]"
+            if self.estimate.gamma_summary_suppressed
+            else f"  mean γ            : {self.estimate.mean_gamma:.3f}   (across both projections)"
+        )
         lines = [
             f"fraQtl Diagnostic v{self.version}",
             f"  model             : {self.model_id}",
             f"  layers            : {self.n_layers}",
             f"  projections       : {', '.join(self.projections)}",
-            f"  mean γ            : {self.estimate.mean_gamma:.3f}   (across both projections)",
+            gamma_line,
             f"  regimes           : {regime_str}",
             f"  mean k95/dim      : {self.estimate.mean_k95_ratio:.2%}",
             f"  headroom score    : {self.estimate.headroom_score:.2f}",
