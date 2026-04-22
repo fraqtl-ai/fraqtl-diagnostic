@@ -24,9 +24,10 @@ class LayerFingerprint:
     alpha_head: float
     alpha_mid: float
     alpha_tail: float
-    gamma: float | None          # stretched-exp γ (mid region)
-    beta: float | None           # stretched-exp β
-    best_family: str | None      # "power" | "exp" | "stretched_exp"
+    gamma: float | None          # KWW γ shape parameter (mid region)
+    beta: float | None           # KWW β
+    regime: str | None           # "stretched" | "exponential" | "compressed" | None
+    best_family: str | None      # "power" | "exp" | "kww"
     r2_by_family: dict           # {family: R²}
     knee: int | None             # first-hard-slope index, None if no sharp knee
     k95: int                     # directions for 95% energy
@@ -45,12 +46,29 @@ class LayerFingerprint:
             "projection": self.projection,
             "dim": self.dim,
             "gamma": self.gamma,
+            "regime": self.regime,
             "alpha_tail": self.alpha_tail,
             "knee": self.knee,
             "k95": self.k95,
             "k99": self.k99,
             "best_family": self.best_family,
         }
+
+
+def _classify_regime(gamma: float | None) -> str | None:
+    """Classify the KWW γ fit into a regime label.
+
+    γ < 1   : stretched-exp (classical Williams-Watts, fat-tailed decay)
+    γ ≈ 1   : pure exponential
+    γ > 1   : compressed-exp (fast head-decay, not stretched)
+    """
+    if gamma is None:
+        return None
+    if gamma < 0.95:
+        return "stretched"
+    if gamma < 1.05:
+        return "exponential"
+    return "compressed"
 
 
 def _safe_r2_aic(pred, log_lam, k):
@@ -132,6 +150,96 @@ def _decimate_spectrum(eig: np.ndarray, n_points: int = 512) -> dict:
     return {"indices": idx.tolist(), "eigvals": eig[idx].astype(np.float64).tolist()}
 
 
+def aggregate_per_head(
+    head_eigs: list[np.ndarray],
+    layer: int,
+    projection: str,
+    *,
+    n_samples: int | None = None,
+    bit_budgets: tuple[float, ...] = (2.0, 3.0, 4.0, 4.5),
+) -> LayerFingerprint:
+    """Build a single layer-level LayerFingerprint for a multi-head projection.
+
+    Fit γ / k95 per-head (each head_eigs[h] is an independent spectrum from
+    that head's Hessian block), then aggregate:
+      - gamma     = median γ across heads (robust to outlier heads)
+      - k95       = mean per-head k95 (kept at per-head dim)
+      - dim       = head_dim (per-head, not d_model)
+      - trusted_rank = mean across heads
+      - alpha_*   = median across heads
+      - regime    = from aggregated γ
+      - r2_by_family = median R² across heads
+      - d_star    = geomean across heads at each bit budget
+
+    Appends `n_heads` in a synthetic field (spectrum_decimated["n_heads"]).
+    """
+    per_head = [
+        fingerprint_layer(e, layer=layer, projection=f"{projection}/head_{h}",
+                          n_samples=n_samples, bit_budgets=bit_budgets)
+        for h, e in enumerate(head_eigs)
+    ]
+
+    def med(attr):
+        vs = [getattr(fp, attr) for fp in per_head if getattr(fp, attr) is not None]
+        return float(np.median(vs)) if vs else None
+
+    def med_float(attr):
+        vs = [getattr(fp, attr) for fp in per_head if isinstance(getattr(fp, attr), (int, float))
+              and not np.isnan(getattr(fp, attr))]
+        return float(np.median(vs)) if vs else float("nan")
+
+    gamma = med("gamma")
+    r2_by_family: dict = {}
+    for fam in ("power", "exp", "kww"):
+        vs = [fp.r2_by_family.get(fam) for fp in per_head
+              if fam in fp.r2_by_family and not np.isnan(fp.r2_by_family.get(fam, float("nan")))]
+        if vs:
+            r2_by_family[fam] = float(np.median(vs))
+
+    # d_star geomean across heads at each budget
+    d_star: dict = {}
+    all_budgets = set()
+    for fp in per_head:
+        all_budgets.update(fp.d_star.keys())
+    for b in sorted(all_budgets):
+        vals = [fp.d_star.get(b) for fp in per_head if b in fp.d_star]
+        vals = [v for v in vals if v and v > 0]
+        if vals:
+            d_star[b] = float(np.exp(np.mean(np.log(vals))))
+
+    decimated = {"per_head_n": len(per_head), "per_head_gammas": [fp.gamma for fp in per_head]}
+    best_counts: dict[str, int] = {}
+    for fp in per_head:
+        if fp.best_family:
+            best_counts[fp.best_family] = best_counts.get(fp.best_family, 0) + 1
+    best_family = max(best_counts, key=best_counts.get) if best_counts else None
+
+    return LayerFingerprint(
+        layer=layer,
+        projection=projection,
+        dim=per_head[0].dim if per_head else 0,
+        trusted_rank=int(np.mean([fp.trusted_rank for fp in per_head])) if per_head else 0,
+        alpha_head=med_float("alpha_head"),
+        alpha_mid=med_float("alpha_mid"),
+        alpha_tail=med_float("alpha_tail"),
+        gamma=gamma,
+        beta=med("beta"),
+        regime=_classify_regime(gamma),
+        best_family=best_family,
+        r2_by_family=r2_by_family,
+        knee=None,
+        k95=int(np.mean([fp.k95 for fp in per_head])) if per_head else 0,
+        k99=int(np.mean([fp.k99 for fp in per_head])) if per_head else 0,
+        k999=int(np.mean([fp.k999 for fp in per_head])) if per_head else 0,
+        top8_energy=float(np.mean([fp.top8_energy for fp in per_head])) if per_head else 0.0,
+        top64_energy=float(np.mean([fp.top64_energy for fp in per_head])) if per_head else 0.0,
+        top256_energy=float(np.mean([fp.top256_energy for fp in per_head])) if per_head else 0.0,
+        eigval_geomean=float(np.exp(np.mean([np.log(max(fp.eigval_geomean, 1e-18)) for fp in per_head]))) if per_head else 0.0,
+        d_star=d_star,
+        spectrum_decimated=decimated,
+    )
+
+
 def fingerprint_layer(
     eig: np.ndarray,
     layer: int,
@@ -203,21 +311,25 @@ def fingerprint_layer(
     except Exception:
         knee = None
 
-    # stretched-exp / family fit on mid region
+    # KWW / family fit on mid region
     ms = fit_power_exp_stretched(eig, int(d * 0.02), min(int(d * 0.80), i_floor))
     gamma = beta = None
     best_family = None
     r2_by_family: dict = {}
     if ms:
         best_family = ms.get("best")
+        if best_family == "stretched_exp":
+            best_family = "kww"
         for fam in ("power", "exp", "stretched_exp"):
             if fam in ms and isinstance(ms[fam], dict):
-                r2_by_family[fam] = ms[fam].get("r2", float("nan"))
+                key = "kww" if fam == "stretched_exp" else fam
+                r2_by_family[key] = ms[fam].get("r2", float("nan"))
         se = ms.get("stretched_exp")
         if isinstance(se, dict):
             gamma = se.get("gamma")
             beta = se.get("beta")
 
+    gamma_f = float(gamma) if gamma is not None else None
     return LayerFingerprint(
         layer=layer,
         projection=projection,
@@ -226,8 +338,9 @@ def fingerprint_layer(
         alpha_head=alpha_head,
         alpha_mid=alpha_mid,
         alpha_tail=alpha_tail,
-        gamma=float(gamma) if gamma is not None else None,
+        gamma=gamma_f,
         beta=float(beta) if beta is not None else None,
+        regime=_classify_regime(gamma_f),
         best_family=best_family,
         r2_by_family=r2_by_family,
         knee=knee,

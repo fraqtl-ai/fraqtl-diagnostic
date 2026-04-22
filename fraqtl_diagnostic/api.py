@@ -13,7 +13,7 @@ import torch
 from .version import __version__
 from ._model_io import load_model, load_wikitext_calibration, find_target_modules
 from .spectrum import capture_single_hessian, eigendecompose
-from .shannon import LayerFingerprint, fingerprint_layer
+from .shannon import LayerFingerprint, fingerprint_layer, aggregate_per_head
 from .depth_law import DepthLawFit, fit_depth_law
 from .estimator import CompressionEstimate, estimate_compression
 
@@ -30,22 +30,40 @@ class DiagnosticReport:
     meta: dict = field(default_factory=dict)
 
     def summary(self) -> str:
+        # regime distribution across layers
+        regimes: dict[str, int] = {}
+        for f in self.fingerprints:
+            if f.regime:
+                regimes[f.regime] = regimes.get(f.regime, 0) + 1
+        regime_str = ", ".join(f"{v} {k}" for k, v in sorted(regimes.items())) if regimes else "—"
+
         lines = [
             f"fraQtl Diagnostic v{self.version}",
             f"  model             : {self.model_id}",
             f"  layers            : {self.n_layers}",
             f"  projections       : {', '.join(self.projections)}",
-            f"  mean γ            : {self.estimate.mean_gamma:.3f}",
+            f"  mean γ            : {self.estimate.mean_gamma:.3f}   (across both projections)",
+            f"  regimes           : {regime_str}",
             f"  mean k95/dim      : {self.estimate.mean_k95_ratio:.2%}",
             f"  headroom score    : {self.estimate.headroom_score:.2f}",
             f"  suggested b/w     : {self.estimate.budget_bits_balanced:.1f} (balanced)"
             f" / {self.estimate.budget_bits_aggressive:.1f} (aggressive)",
         ]
         for dl in self.depth_laws:
-            lines.append(
-                f"  depth-law {dl.projection:10s}  "
-                f"γ = {dl.slope:+.3f}·depth + {dl.intercept:.3f}   R² = {dl.r2:.2f}"
-            )
+            if dl.r2 < 0.3:
+                # no trend detectable — honest about it rather than print a meaningless fit
+                lines.append(
+                    f"  depth-law {dl.projection:10s}  "
+                    f"uninformative (R² = {dl.r2:.2f}) — γ is nearly flat across depth, "
+                    f"median γ = {dl.gamma_p50:.3f}"
+                )
+            else:
+                lines.append(
+                    f"  depth-law {dl.projection:10s}  "
+                    f"γ = {dl.slope:+.3f}·depth + {dl.intercept:.3f}   "
+                    f"R² = {dl.r2:.2f}   [{dl.consistency_flag}]"
+                    f"   (depth ∈ [0,1])"
+                )
         return "\n".join(lines)
 
     def to_json(self, path: str | Path) -> None:
@@ -102,20 +120,46 @@ def analyze(
     if progress:
         print(f"[{time.time()-t0:.1f}s] found {n_layers} layers × {len(projections)} projections", flush=True)
 
+    # Read attention head structure from model config so o_proj can be fit
+    # per-head instead of as one smeared multi-head mixture (R² collapse).
+    cfg = getattr(model, "config", None)
+    n_heads = getattr(cfg, "num_attention_heads", None) if cfg else None
+    head_dim = None
+    if cfg and n_heads:
+        head_dim = getattr(cfg, "head_dim", None) or (
+            getattr(cfg, "hidden_size", 0) // n_heads if getattr(cfg, "hidden_size", None) else None
+        )
+
     fingerprints: list[LayerFingerprint] = []
     for layer_idx in sorted(targets.keys()):
         for proj, mod in targets[layer_idx].items():
             ts = time.time()
             H, count = capture_single_hessian(model, calib_ids, mod, dev)
-            eig = eigendecompose(H)
+
+            if proj == "o_proj" and n_heads and head_dim and (n_heads * head_dim) == H.shape[0]:
+                # Per-head o_proj fit: block-diagonal into n_heads head-dim blocks,
+                # fit γ per head, aggregate to median γ across heads. This produces
+                # a defensible depth-law R² on models where the mixture-of-heads
+                # smearing otherwise gives R²≈0.
+                head_eigs = []
+                for h in range(int(n_heads)):
+                    lo, hi = h * head_dim, (h + 1) * head_dim
+                    H_h = H[lo:hi, lo:hi].contiguous()
+                    head_eigs.append(eigendecompose(H_h))
+                fp = aggregate_per_head(
+                    head_eigs, layer=layer_idx, projection=proj,
+                    n_samples=count, bit_budgets=bit_budgets,
+                )
+            else:
+                eig = eigendecompose(H)
+                fp = fingerprint_layer(
+                    eig, layer=layer_idx, projection=proj,
+                    n_samples=count, bit_budgets=bit_budgets,
+                )
             del H
             gc.collect()
             if dev == "cuda":
                 torch.cuda.empty_cache()
-            fp = fingerprint_layer(
-                eig, layer=layer_idx, projection=proj,
-                n_samples=count, bit_budgets=bit_budgets,
-            )
             fingerprints.append(fp)
             if progress:
                 g = fp.gamma if fp.gamma is not None else float("nan")
