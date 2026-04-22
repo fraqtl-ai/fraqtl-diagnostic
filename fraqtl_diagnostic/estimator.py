@@ -43,15 +43,28 @@ def estimate_compression(fingerprints: Sequence[LayerFingerprint]) -> Compressio
     k95_ratios = [f.k95 / f.dim for f in fingerprints]
     mean_k95 = float(np.mean(k95_ratios))
 
-    gammas = [f.gamma for f in fingerprints if f.gamma is not None]
-    mean_gamma = float(np.mean(gammas)) if gammas else float("nan")
+    # Only include fits with non-poor quality AND stretched_exp regime in the
+    # mean-γ headline. Mixing regimes or including poor fits in a scalar mean
+    # is misleading and what the math-agent reviewer flagged.
+    inside_kww = [
+        f for f in fingerprints
+        if f.gamma is not None
+        and f.fit_quality != "poor"
+        and f.regime == "stretched_exp"
+    ]
+    gammas_inside = [f.gamma for f in inside_kww]
+    mean_gamma = float(np.mean(gammas_inside)) if gammas_inside else float("nan")
 
-    # Refuse to publish a single-γ headline if the layers are split across
-    # different Kohlrausch regimes — mean becomes meaningless. Reviewer rule:
-    # if >10% of γ fits land outside (0, 1), suppress the scalar summary.
-    n_out = sum(1 for g in gammas if g is not None and (g <= 0 or g >= 1.0))
-    n_total = len(gammas)
-    suppress_gamma = n_total > 0 and (n_out / n_total) > 0.10
+    # Suppression rule: if >10% of layers fall outside the KWW universality
+    # class (compressed_exp, super_gaussian, or poor-quality fits), the scalar
+    # mean γ is not representative and we refuse to publish it as a headline.
+    fitted = [f for f in fingerprints if f.gamma is not None]
+    n_total = len(fitted)
+    n_outside = sum(
+        1 for f in fitted
+        if f.fit_quality == "poor" or f.regime != "stretched_exp"
+    )
+    suppress_gamma = n_total > 0 and (n_outside / n_total) > 0.10
 
     # headroom_score: low k95/dim + low γ → more compressible
     # k95/dim in [0, 1], γ typically in [0.1, 1.2]. Score = 1 − k95_ratio, penalty

@@ -26,7 +26,8 @@ class LayerFingerprint:
     alpha_tail: float
     gamma: float | None          # KWW γ shape parameter (mid region)
     beta: float | None           # KWW β
-    regime: str | None           # "stretched" | "exponential" | "compressed" | None
+    regime: str | None           # "stretched_exp" | "near_exponential" | "compressed_exp" | "super_gaussian"
+    fit_quality: str             # "good" (R²≥0.95) | "moderate" (0.80–0.95) | "poor"
     best_family: str | None      # "power" | "exp" | "kww"
     r2_by_family: dict           # {family: R²}
     knee: int | None             # first-hard-slope index, None if no sharp knee
@@ -47,6 +48,7 @@ class LayerFingerprint:
             "dim": self.dim,
             "gamma": self.gamma,
             "regime": self.regime,
+            "fit_quality": self.fit_quality,
             "alpha_tail": self.alpha_tail,
             "knee": self.knee,
             "k95": self.k95,
@@ -58,17 +60,32 @@ class LayerFingerprint:
 def _classify_regime(gamma: float | None) -> str | None:
     """Classify the KWW γ fit into a regime label.
 
-    γ < 1   : stretched-exp (classical Williams-Watts, fat-tailed decay)
-    γ ≈ 1   : pure exponential
-    γ > 1   : compressed-exp (fast head-decay, not stretched)
+    γ ∈ (0, 1)     : stretched_exp   (KWW universality class, fat-tailed decay)
+    γ ∈ [1, 1.1)   : near_exponential (Debye relaxation)
+    γ ∈ [1.1, 2)   : compressed_exp  (valid, non-universal)
+    γ ∈ [2, 3]     : super_gaussian  (atypical; data mismatch likely)
+    otherwise      : None (anomaly / out of physical range)
     """
-    if gamma is None:
+    if gamma is None or not (0.05 <= gamma <= 3.0):
         return None
-    if gamma < 0.95:
-        return "stretched"
-    if gamma < 1.05:
-        return "exponential"
-    return "compressed"
+    if gamma < 1.0:
+        return "stretched_exp"
+    if gamma < 1.1:
+        return "near_exponential"
+    if gamma < 2.0:
+        return "compressed_exp"
+    return "super_gaussian"
+
+
+def _fit_quality(r2: float | None) -> str:
+    """Fit-quality flag from log-space R²."""
+    if r2 is None or not np.isfinite(r2):
+        return "poor"
+    if r2 >= 0.95:
+        return "good"
+    if r2 >= 0.80:
+        return "moderate"
+    return "poor"
 
 
 def _safe_r2_aic(pred, log_lam, k):
@@ -116,12 +133,25 @@ def fit_power_exp_stretched(eig: np.ndarray, i_lo: int, i_hi: int) -> dict | Non
     except Exception:
         pass
 
-    # stretched exp: log λ = -β x^γ + c
+    # stretched exp: log λ = -β x^γ + c   (fit in log-space, already done — log_lam
+    # is what we regress against). Pre-fit a pure-exp line for a strong p0, then
+    # bound γ ∈ [0.05, 3.0] and β > 1e-6 so curve_fit can't drift into the γ=-51
+    # basin on ill-conditioned tails.
     try:
         def _f(x_, beta, gamma, c):
             return -beta * np.power(x_, gamma) + c
-        p0 = [1e-4, 0.5, float(log_lam.max())]
-        popt, _ = curve_fit(_f, x, log_lam, p0=p0, maxfev=5000)
+        # pre-fit: linear in x (pure exponential, γ=1) gives a defensible initial slope
+        try:
+            slope_lin, b_lin = np.polyfit(x, log_lam, 1)
+            beta0 = max(float(-slope_lin), 1e-6)
+            c0 = float(b_lin)
+        except Exception:
+            beta0, c0 = 1e-4, float(log_lam.max())
+        p0 = [beta0, 1.0, c0]
+        popt, _ = curve_fit(
+            _f, x, log_lam, p0=p0, maxfev=5000,
+            bounds=([1e-6, 0.05, -np.inf], [np.inf, 3.0, np.inf]),
+        )
         r2, aic = _safe_r2_aic(_f(x, *popt), log_lam, 3)
         out["stretched_exp"] = {
             "beta": float(popt[0]), "gamma": float(popt[1]),
@@ -173,11 +203,16 @@ def aggregate_per_head(
 
     Appends `n_heads` in a synthetic field (spectrum_decimated["n_heads"]).
     """
-    per_head = [
+    per_head_all = [
         fingerprint_layer(e, layer=layer, projection=f"{projection}/head_{h}",
                           n_samples=n_samples, bit_budgets=bit_budgets)
         for h, e in enumerate(head_eigs)
     ]
+    # Only aggregate over heads with non-poor fit quality; poor fits contaminate
+    # the median and are the source of the γ = −51 blowup in the smoke.
+    per_head_ok = [fp for fp in per_head_all if fp.fit_quality != "poor"]
+    # Fallback: if ALL heads are poor, use all; the layer-level regime will still flag it.
+    per_head = per_head_ok if per_head_ok else per_head_all
 
     def med(attr):
         vs = [getattr(fp, attr) for fp in per_head if getattr(fp, attr) is not None]
@@ -207,12 +242,27 @@ def aggregate_per_head(
         if vals:
             d_star[b] = float(np.exp(np.mean(np.log(vals))))
 
-    decimated = {"per_head_n": len(per_head), "per_head_gammas": [fp.gamma for fp in per_head]}
+    decimated = {
+        "per_head_n": len(per_head_all),
+        "per_head_n_ok": len(per_head_ok),
+        "per_head_gammas": [fp.gamma for fp in per_head_all],
+    }
     best_counts: dict[str, int] = {}
     for fp in per_head:
         if fp.best_family:
             best_counts[fp.best_family] = best_counts.get(fp.best_family, 0) + 1
     best_family = max(best_counts, key=best_counts.get) if best_counts else None
+
+    # aggregate fit_quality: if majority of heads are good → good, etc.
+    quality_counts: dict[str, int] = {}
+    for fp in per_head_all:
+        quality_counts[fp.fit_quality] = quality_counts.get(fp.fit_quality, 0) + 1
+    if quality_counts.get("good", 0) >= len(per_head_all) * 0.7:
+        agg_quality = "good"
+    elif quality_counts.get("poor", 0) >= len(per_head_all) * 0.5:
+        agg_quality = "poor"
+    else:
+        agg_quality = "moderate"
 
     return LayerFingerprint(
         layer=layer,
@@ -225,6 +275,7 @@ def aggregate_per_head(
         gamma=gamma,
         beta=med("beta"),
         regime=_classify_regime(gamma),
+        fit_quality=agg_quality,
         best_family=best_family,
         r2_by_family=r2_by_family,
         knee=None,
@@ -330,6 +381,13 @@ def fingerprint_layer(
             beta = se.get("beta")
 
     gamma_f = float(gamma) if gamma is not None else None
+    kww_r2 = r2_by_family.get("kww")
+    fit_quality = _fit_quality(kww_r2)
+    # if fit is poor, refuse to report γ — anomalous fits should be excluded
+    # from downstream aggregation (aggregate_per_head, depth-law, mean γ).
+    if fit_quality == "poor":
+        gamma_f = None
+
     return LayerFingerprint(
         layer=layer,
         projection=projection,
@@ -341,6 +399,7 @@ def fingerprint_layer(
         gamma=gamma_f,
         beta=float(beta) if beta is not None else None,
         regime=_classify_regime(gamma_f),
+        fit_quality=fit_quality,
         best_family=best_family,
         r2_by_family=r2_by_family,
         knee=knee,
