@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fraQtl Diagnostic — Qwen/Qwen2.5-0.5B</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          max-width: 960px; margin: 2em auto; padding: 0 1em; color: #222; }
+  h1 { font-size: 1.5em; border-bottom: 2px solid #333; padding-bottom: 0.2em; }
+  h2 { font-size: 1.2em; margin-top: 2em; }
+  table { border-collapse: collapse; font-size: 0.9em; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 0.35em 0.7em; text-align: right; }
+  th { background: #f3f3f3; }
+  td:first-child, th:first-child { text-align: left; }
+  .headline { background: #f7f9fb; border-left: 4px solid #3366cc;
+               padding: 0.8em 1.2em; margin: 1em 0; font-family: monospace; }
+  .meta { color: #666; font-size: 0.85em; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<h1>fraQtl Diagnostic — Qwen/Qwen2.5-0.5B</h1>
+<p class="meta">
+  v0.1.0 &middot;
+  24 layers &middot;
+  projections: down_proj, o_proj &middot;
+  163.7s on cuda
+</p>
+
+<div class="headline">moderate compression tolerated: suggested 3.3 b/w balanced, 2.8 b/w aggressive. mean k95/dim = 25.88%, mean γ = 0.807</div>
+
+<h2>Compression potential (Shannon-based)</h2>
+<table>
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Headroom score (0–1)</td><td>0.662</td></tr>
+  <tr><td>Mean γ (stretched-exp shape)</td><td>0.807</td></tr>
+  <tr><td>Mean k95 / dim</td><td>25.88%</td></tr>
+  <tr><td>Suggested b/w (aggressive)</td><td>2.84</td></tr>
+  <tr><td>Suggested b/w (balanced)</td><td>3.34</td></tr>
+  <tr><td>Suggested b/w (conservative)</td><td>3.84</td></tr>
+</table>
+
+<h2>Depth-law fits</h2>
+<table>
+  <tr><th>Projection</th><th>Slope</th><th>Intercept</th><th>R²</th><th>γ p10/p50/p90</th><th>n</th></tr>
+  <tr><td>down_proj</td><td>-0.250</td><td>1.221</td><td>0.524</td><td>0.979 / 1.091 / 1.203</td><td>24</td></tr>
+  <tr><td>o_proj</td><td>-0.254</td><td>0.644</td><td>0.305</td><td>0.355 / 0.510 / 0.691</td><td>24</td></tr>
+</table>
+
+<h2>Per-layer fingerprint (first 40)</h2>
+<table>
+  <tr><th>Layer</th><th>Proj</th><th>dim</th><th>γ</th><th>α_tail</th><th>k95</th>
+      <th>k99</th><th>knee</th><th>best fit</th></tr>
+  <tr><td>0</td><td>down_proj</td><td>4864</td><td>1.058</td><td>11.09</td><td>918</td><td>1423</td><td>1382</td><td>stretched_exp</td></tr>
+  <tr><td>0</td><td>o_proj</td><td>896</td><td>0.760</td><td>7.20</td><td>187</td><td>387</td><td>550</td><td>stretched_exp</td></tr>
+  <tr><td>1</td><td>down_proj</td><td>4864</td><td>1.299</td><td>9.97</td><td>1402</td><td>2197</td><td>2408</td><td>stretched_exp</td></tr>
+  <tr><td>1</td><td>o_proj</td><td>896</td><td>0.556</td><td>4.68</td><td>101</td><td>326</td><td>631</td><td>stretched_exp</td></tr>
+  <tr><td>2</td><td>down_proj</td><td>4864</td><td>1.109</td><td>7.00</td><td>1</td><td>1</td><td>2264</td><td>stretched_exp</td></tr>
+  <tr><td>2</td><td>o_proj</td><td>896</td><td>0.450</td><td>3.79</td><td>351</td><td>609</td><td>717</td><td>stretched_exp</td></tr>
+  <tr><td>3</td><td>down_proj</td><td>4864</td><td>1.321</td><td>7.95</td><td>1</td><td>66</td><td>2507</td><td>stretched_exp</td></tr>
+  <tr><td>3</td><td>o_proj</td><td>896</td><td>0.691</td><td>5.35</td><td>305</td><td>536</td><td>607</td><td>stretched_exp</td></tr>
+  <tr><td>4</td><td>down_proj</td><td>4864</td><td>1.216</td><td>9.12</td><td>1583</td><td>2471</td><td>2720</td><td>stretched_exp</td></tr>
+  <tr><td>4</td><td>o_proj</td><td>896</td><td>0.537</td><td>4.60</td><td>283</td><td>521</td><td>666</td><td>stretched_exp</td></tr>
+  <tr><td>5</td><td>down_proj</td><td>4864</td><td>1.162</td><td>9.24</td><td>1343</td><td>2246</td><td>2666</td><td>stretched_exp</td></tr>
+  <tr><td>5</td><td>o_proj</td><td>896</td><td>0.512</td><td>3.94</td><td>297</td><td>557</td><td>710</td><td>stretched_exp</td></tr>
+  <tr><td>6</td><td>down_proj</td><td>4864</td><td>1.154</td><td>9.02</td><td>1525</td><td>2441</td><td>2728</td><td>stretched_exp</td></tr>
+  <tr><td>6</td><td>o_proj</td><td>896</td><td>0.565</td><td>4.52</td><td>242</td><td>476</td><td>642</td><td>stretched_exp</td></tr>
+  <tr><td>7</td><td>down_proj</td><td>4864</td><td>1.173</td><td>8.87</td><td>1630</td><td>2552</td><td>2806</td><td>stretched_exp</td></tr>
+  <tr><td>7</td><td>o_proj</td><td>896</td><td>0.481</td><td>3.30</td><td>399</td><td>658</td><td>769</td><td>stretched_exp</td></tr>
+  <tr><td>8</td><td>down_proj</td><td>4864</td><td>1.161</td><td>8.55</td><td>1725</td><td>2652</td><td>2858</td><td>stretched_exp</td></tr>
+  <tr><td>8</td><td>o_proj</td><td>896</td><td>0.509</td><td>3.88</td><td>317</td><td>572</td><td>724</td><td>stretched_exp</td></tr>
+  <tr><td>9</td><td>down_proj</td><td>4864</td><td>1.150</td><td>8.22</td><td>1806</td><td>2734</td><td>2904</td><td>stretched_exp</td></tr>
+  <tr><td>9</td><td>o_proj</td><td>896</td><td>0.689</td><td>10.15</td><td>264</td><td>473</td><td>596</td><td>stretched_exp</td></tr>
+  <tr><td>10</td><td>down_proj</td><td>4864</td><td>1.076</td><td>8.08</td><td>1646</td><td>2611</td><td>2918</td><td>stretched_exp</td></tr>
+  <tr><td>10</td><td>o_proj</td><td>896</td><td>0.544</td><td>4.77</td><td>257</td><td>491</td><td>657</td><td>stretched_exp</td></tr>
+  <tr><td>11</td><td>down_proj</td><td>4864</td><td>1.091</td><td>7.90</td><td>1684</td><td>2667</td><td>2957</td><td>stretched_exp</td></tr>
+  <tr><td>11</td><td>o_proj</td><td>896</td><td>0.865</td><td>12.06</td><td>161</td><td>365</td><td>545</td><td>stretched_exp</td></tr>
+  <tr><td>12</td><td>down_proj</td><td>4864</td><td>1.090</td><td>7.99</td><td>1701</td><td>2662</td><td>2920</td><td>stretched_exp</td></tr>
+  <tr><td>12</td><td>o_proj</td><td>896</td><td>0.503</td><td>4.63</td><td>244</td><td>474</td><td>699</td><td>stretched_exp</td></tr>
+  <tr><td>13</td><td>down_proj</td><td>4864</td><td>1.081</td><td>8.00</td><td>1681</td><td>2645</td><td>2896</td><td>stretched_exp</td></tr>
+  <tr><td>13</td><td>o_proj</td><td>896</td><td>0.531</td><td>4.87</td><td>264</td><td>500</td><td>661</td><td>stretched_exp</td></tr>
+  <tr><td>14</td><td>down_proj</td><td>4864</td><td>1.012</td><td>8.19</td><td>1449</td><td>2440</td><td>2886</td><td>stretched_exp</td></tr>
+  <tr><td>14</td><td>o_proj</td><td>896</td><td>0.504</td><td>3.64</td><td>261</td><td>517</td><td>754</td><td>stretched_exp</td></tr>
+  <tr><td>15</td><td>down_proj</td><td>4864</td><td>0.986</td><td>8.25</td><td>1348</td><td>2348</td><td>2833</td><td>stretched_exp</td></tr>
+  <tr><td>15</td><td>o_proj</td><td>896</td><td>0.395</td><td>3.69</td><td>242</td><td>503</td><td>753</td><td>stretched_exp</td></tr>
+  <tr><td>16</td><td>down_proj</td><td>4864</td><td>0.975</td><td>8.46</td><td>1339</td><td>2316</td><td>2803</td><td>stretched_exp</td></tr>
+  <tr><td>16</td><td>o_proj</td><td>896</td><td>0.585</td><td>6.11</td><td>302</td><td>527</td><td>671</td><td>stretched_exp</td></tr>
+  <tr><td>17</td><td>down_proj</td><td>4864</td><td>1.106</td><td>8.80</td><td>1416</td><td>2352</td><td>2714</td><td>stretched_exp</td></tr>
+  <tr><td>17</td><td>o_proj</td><td>896</td><td>0.497</td><td>4.75</td><td>133</td><td>371</td><td>655</td><td>stretched_exp</td></tr>
+  <tr><td>18</td><td>down_proj</td><td>4864</td><td>1.132</td><td>8.76</td><td>1527</td><td>2465</td><td>2777</td><td>stretched_exp</td></tr>
+  <tr><td>18</td><td>o_proj</td><td>896</td><td>0.365</td><td>3.67</td><td>349</td><td>614</td><td>724</td><td>stretched_exp</td></tr>
+  <tr><td>19</td><td>down_proj</td><td>4864</td><td>1.090</td><td>8.84</td><td>1369</td><td>2308</td><td>2744</td><td>stretched_exp</td></tr>
+  <tr><td>19</td><td>o_proj</td><td>896</td><td>0.282</td><td>3.58</td><td>290</td><td>575</td><td>740</td><td>stretched_exp</td></tr>
+</table>
+
+<h2>Figures</h2>
+<p>(generate the PNG with <code>report.to_png(path)</code> — shown here if embedded)</p>
+<p><img src="Qwen_Qwen2.5-0.5B_fingerprint.png" alt="diagnostic figure"></p>
+
+<h2>About</h2>
+<p class="meta">
+  This diagnostic measures information-theoretic compressibility from the input covariance
+  spectrum of each layer. It does <em>not</em> perform compression — it reports the ceiling and
+  shape. The <a href="https://fraqtl.ai">fraQtl compression engine</a> uses this fingerprint
+  plus additional engineering (sign correction, per-model calibration) to get closer to the
+  ceiling in practice.
+</p>
+
+</body>
+</html>

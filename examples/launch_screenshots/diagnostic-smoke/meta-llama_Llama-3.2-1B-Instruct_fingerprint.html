@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>fraQtl Diagnostic — meta-llama/Llama-3.2-1B-Instruct</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          max-width: 960px; margin: 2em auto; padding: 0 1em; color: #222; }
+  h1 { font-size: 1.5em; border-bottom: 2px solid #333; padding-bottom: 0.2em; }
+  h2 { font-size: 1.2em; margin-top: 2em; }
+  table { border-collapse: collapse; font-size: 0.9em; margin: 1em 0; }
+  th, td { border: 1px solid #ddd; padding: 0.35em 0.7em; text-align: right; }
+  th { background: #f3f3f3; }
+  td:first-child, th:first-child { text-align: left; }
+  .headline { background: #f7f9fb; border-left: 4px solid #3366cc;
+               padding: 0.8em 1.2em; margin: 1em 0; font-family: monospace; }
+  .meta { color: #666; font-size: 0.85em; }
+  img { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<h1>fraQtl Diagnostic — meta-llama/Llama-3.2-1B-Instruct</h1>
+<p class="meta">
+  v0.1.0 &middot;
+  16 layers &middot;
+  projections: down_proj, o_proj &middot;
+  276.8s on cuda
+</p>
+
+<div class="headline">moderate compression tolerated: suggested 3.3 b/w balanced, 2.8 b/w aggressive. mean k95/dim = 21.45%, mean γ = 0.818</div>
+
+<h2>Compression potential (Shannon-based)</h2>
+<table>
+  <tr><th>Metric</th><th>Value</th></tr>
+  <tr><td>Headroom score (0–1)</td><td>0.693</td></tr>
+  <tr><td>Mean γ (stretched-exp shape)</td><td>0.818</td></tr>
+  <tr><td>Mean k95 / dim</td><td>21.45%</td></tr>
+  <tr><td>Suggested b/w (aggressive)</td><td>2.81</td></tr>
+  <tr><td>Suggested b/w (balanced)</td><td>3.31</td></tr>
+  <tr><td>Suggested b/w (conservative)</td><td>3.81</td></tr>
+</table>
+
+<h2>Depth-law fits</h2>
+<table>
+  <tr><th>Projection</th><th>Slope</th><th>Intercept</th><th>R²</th><th>γ p10/p50/p90</th><th>n</th></tr>
+  <tr><td>down_proj</td><td>-0.345</td><td>1.254</td><td>0.356</td><td>0.945 / 1.015 / 1.375</td><td>16</td></tr>
+  <tr><td>o_proj</td><td>-0.237</td><td>0.673</td><td>0.430</td><td>0.465 / 0.547 / 0.685</td><td>16</td></tr>
+</table>
+
+<h2>Per-layer fingerprint (first 40)</h2>
+<table>
+  <tr><th>Layer</th><th>Proj</th><th>dim</th><th>γ</th><th>α_tail</th><th>k95</th>
+      <th>k99</th><th>knee</th><th>best fit</th></tr>
+  <tr><td>0</td><td>down_proj</td><td>8192</td><td>1.506</td><td>325.78</td><td>829</td><td>1692</td><td>2313</td><td>stretched_exp</td></tr>
+  <tr><td>0</td><td>o_proj</td><td>2048</td><td>0.812</td><td>7.83</td><td>372</td><td>712</td><td>1047</td><td>stretched_exp</td></tr>
+  <tr><td>1</td><td>down_proj</td><td>8192</td><td>0.945</td><td>4.90</td><td>1</td><td>1</td><td>—</td><td>stretched_exp</td></tr>
+  <tr><td>1</td><td>o_proj</td><td>2048</td><td>0.735</td><td>5.91</td><td>664</td><td>1156</td><td>1380</td><td>stretched_exp</td></tr>
+  <tr><td>2</td><td>down_proj</td><td>8192</td><td>1.486</td><td>42.09</td><td>2051</td><td>3004</td><td>3127</td><td>stretched_exp</td></tr>
+  <tr><td>2</td><td>o_proj</td><td>2048</td><td>0.572</td><td>4.34</td><td>668</td><td>1229</td><td>1583</td><td>stretched_exp</td></tr>
+  <tr><td>3</td><td>down_proj</td><td>8192</td><td>1.265</td><td>49.46</td><td>2066</td><td>3062</td><td>3270</td><td>stretched_exp</td></tr>
+  <tr><td>3</td><td>o_proj</td><td>2048</td><td>0.565</td><td>4.54</td><td>657</td><td>1209</td><td>1564</td><td>stretched_exp</td></tr>
+  <tr><td>4</td><td>down_proj</td><td>8192</td><td>1.104</td><td>31.03</td><td>2016</td><td>3061</td><td>3331</td><td>stretched_exp</td></tr>
+  <tr><td>4</td><td>o_proj</td><td>2048</td><td>0.636</td><td>5.82</td><td>524</td><td>1032</td><td>1384</td><td>stretched_exp</td></tr>
+  <tr><td>5</td><td>down_proj</td><td>8192</td><td>1.010</td><td>81.65</td><td>1991</td><td>3072</td><td>3396</td><td>exp</td></tr>
+  <tr><td>5</td><td>o_proj</td><td>2048</td><td>0.533</td><td>4.92</td><td>455</td><td>988</td><td>1472</td><td>stretched_exp</td></tr>
+  <tr><td>6</td><td>down_proj</td><td>8192</td><td>0.987</td><td>46.66</td><td>2037</td><td>3116</td><td>3434</td><td>exp</td></tr>
+  <tr><td>6</td><td>o_proj</td><td>2048</td><td>0.467</td><td>4.25</td><td>475</td><td>1039</td><td>1563</td><td>stretched_exp</td></tr>
+  <tr><td>7</td><td>down_proj</td><td>8192</td><td>0.975</td><td>23.15</td><td>1959</td><td>3068</td><td>3456</td><td>stretched_exp</td></tr>
+  <tr><td>7</td><td>o_proj</td><td>2048</td><td>0.518</td><td>5.04</td><td>365</td><td>865</td><td>1474</td><td>stretched_exp</td></tr>
+  <tr><td>8</td><td>down_proj</td><td>8192</td><td>0.946</td><td>63.95</td><td>1933</td><td>3041</td><td>3439</td><td>stretched_exp</td></tr>
+  <tr><td>8</td><td>o_proj</td><td>2048</td><td>0.463</td><td>4.30</td><td>401</td><td>933</td><td>1542</td><td>stretched_exp</td></tr>
+  <tr><td>9</td><td>down_proj</td><td>8192</td><td>0.988</td><td>59.71</td><td>1807</td><td>2930</td><td>3375</td><td>exp</td></tr>
+  <tr><td>9</td><td>o_proj</td><td>2048</td><td>0.509</td><td>4.62</td><td>495</td><td>1038</td><td>1562</td><td>stretched_exp</td></tr>
+  <tr><td>10</td><td>down_proj</td><td>8192</td><td>1.049</td><td>49.27</td><td>1863</td><td>2962</td><td>3397</td><td>stretched_exp</td></tr>
+  <tr><td>10</td><td>o_proj</td><td>2048</td><td>0.528</td><td>4.73</td><td>507</td><td>1053</td><td>1501</td><td>stretched_exp</td></tr>
+  <tr><td>11</td><td>down_proj</td><td>8192</td><td>1.074</td><td>38.43</td><td>1787</td><td>2901</td><td>3341</td><td>stretched_exp</td></tr>
+  <tr><td>11</td><td>o_proj</td><td>2048</td><td>0.575</td><td>5.19</td><td>537</td><td>1053</td><td>1473</td><td>stretched_exp</td></tr>
+  <tr><td>12</td><td>down_proj</td><td>8192</td><td>1.070</td><td>345.61</td><td>1710</td><td>2842</td><td>3329</td><td>stretched_exp</td></tr>
+  <tr><td>12</td><td>o_proj</td><td>2048</td><td>0.555</td><td>5.12</td><td>417</td><td>925</td><td>1435</td><td>stretched_exp</td></tr>
+  <tr><td>13</td><td>down_proj</td><td>8192</td><td>1.011</td><td>439.09</td><td>1642</td><td>2796</td><td>3369</td><td>exp</td></tr>
+  <tr><td>13</td><td>o_proj</td><td>2048</td><td>0.581</td><td>5.35</td><td>444</td><td>969</td><td>1444</td><td>stretched_exp</td></tr>
+  <tr><td>14</td><td>down_proj</td><td>8192</td><td>1.018</td><td>103.10</td><td>1464</td><td>2650</td><td>3322</td><td>exp</td></tr>
+  <tr><td>14</td><td>o_proj</td><td>2048</td><td>0.539</td><td>5.29</td><td>390</td><td>896</td><td>1375</td><td>stretched_exp</td></tr>
+  <tr><td>15</td><td>down_proj</td><td>8192</td><td>0.869</td><td>119.32</td><td>458</td><td>1545</td><td>3175</td><td>stretched_exp</td></tr>
+  <tr><td>15</td><td>o_proj</td><td>2048</td><td>0.292</td><td>4.97</td><td>284</td><td>722</td><td>1476</td><td>stretched_exp</td></tr>
+</table>
+
+<h2>Figures</h2>
+<p>(generate the PNG with <code>report.to_png(path)</code> — shown here if embedded)</p>
+<p><img src="meta-llama_Llama-3.2-1B-Instruct_fingerprint.png" alt="diagnostic figure"></p>
+
+<h2>About</h2>
+<p class="meta">
+  This diagnostic measures information-theoretic compressibility from the input covariance
+  spectrum of each layer. It does <em>not</em> perform compression — it reports the ceiling and
+  shape. The <a href="https://fraqtl.ai">fraQtl compression engine</a> uses this fingerprint
+  plus additional engineering (sign correction, per-model calibration) to get closer to the
+  ceiling in practice.
+</p>
+
+</body>
+</html>
