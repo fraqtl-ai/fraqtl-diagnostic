@@ -1,6 +1,12 @@
-# fraQtl Diagnostic
+<p align="center">
+  <img src="docs/logo.png" alt="fraQtl" width="160"/>
+</p>
 
-Fingerprint any transformer's compression potential — fast.
+<h1 align="center">fraQtl Diagnostic</h1>
+
+<p align="center">
+  Fingerprint any transformer's compression potential — fast.
+</p>
 
 Measures per-layer:
 - **γ** (stretched-exponential decay shape of the Hessian spectrum)
