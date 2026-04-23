@@ -8,7 +8,7 @@ version = "0.1.1"
 description = "Fingerprint any transformer's compression potential in 30 minutes."
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 authors = [
   { name = "fraQtl", email = "hello@fraqtl.ai" },
 ]

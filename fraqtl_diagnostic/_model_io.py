@@ -2,12 +2,46 @@
 from __future__ import annotations
 from typing import Iterable, Sequence
 
+import sys
+
 import torch
+
+
+_LZMA_HELP = """
+Your Python installation is missing the _lzma C extension. This is a
+common pyenv-on-macOS issue: pyenv built Python without the xz library.
+
+Fix:
+  brew install xz
+  pyenv uninstall <your version>
+  pyenv install <your version>
+  # then reopen your terminal
+
+Alternatively, use a different Python (brew's python@3.12, conda, or Docker):
+  brew install python@3.12
+  /opt/homebrew/bin/python3.12 -m venv ~/fraqtl-try
+  source ~/fraqtl-try/bin/activate
+  pip install fraqtl-diagnostic
+"""
+
+
+def _import_transformers():
+    """Import transformers with a helpful error for the pyenv-lzma case."""
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        return AutoModelForCausalLM, AutoTokenizer
+    except ModuleNotFoundError as e:
+        if "_lzma" in str(e):
+            print(_LZMA_HELP, file=sys.stderr)
+            raise ModuleNotFoundError(
+                "Missing _lzma C extension in this Python. See stderr for fix."
+            ) from e
+        raise
 
 
 def load_model(model_id: str, *, trust_remote_code: bool = False):
     """Load HF model + tokenizer in fp16. Returns (model, tokenizer)."""
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    AutoModelForCausalLM, AutoTokenizer = _import_transformers()
 
     tok = AutoTokenizer.from_pretrained(model_id, trust_remote_code=trust_remote_code)
     model = AutoModelForCausalLM.from_pretrained(

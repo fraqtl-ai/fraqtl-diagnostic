@@ -8,10 +8,49 @@ from .api import analyze
 from .version import __version__
 
 
+_EPILOG = """
+examples:
+
+  # smallest / fastest smoke (~3 min on A100, ~5 min on free Colab T4)
+  fraqtl analyze Qwen/Qwen2.5-0.5B
+
+  # real run on a production-size model
+  fraqtl analyze mistralai/Mistral-7B-v0.1 --n-seqs 32 --seq-len 512
+
+  # fine-tune vs base model verdict (preserved / shifted / degraded / broken)
+  fraqtl analyze my-org/my-finetune --compare-to mistralai/Mistral-7B-v0.1
+
+  # list bundled reference models
+  fraqtl list-refs
+
+outputs:
+  *_fingerprint.json  machine-readable per-layer data
+  *_fingerprint.html  readable report with tables + embedded figure
+  *_fingerprint.png   4-panel figure (spectrum, γ depth-law, k95, summary)
+
+supported inputs:
+  HuggingFace model ids (e.g. "mistralai/Mistral-7B-v0.1") or local paths to
+  HF-format checkpoints (containing config.json + safetensors).
+
+  Not supported: GGUF, ONNX, raw .pt files (yet — see gameplan).
+
+troubleshooting:
+  - ModuleNotFoundError: _lzma → pyenv built Python without xz.
+    Fix: brew install xz && pyenv uninstall <ver> && pyenv install <ver>
+  - Out of memory → lower --n-seqs (default 32) or --seq-len (default 512),
+    or pick a smaller model.
+
+docs:
+  github.com/fraqtl-ai/fraqtl-diagnostic
+"""
+
+
 def _make_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="fraqtl",
         description="fraQtl Diagnostic — fingerprint any transformer's compression potential.",
+        epilog=_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", action="version", version=f"fraqtl-diagnostic {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
