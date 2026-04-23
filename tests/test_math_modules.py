@@ -90,11 +90,15 @@ def test_estimate_compression_returns_plausible_budget():
     for i in range(6):
         eig = _stretched_eigvals(seed=i)
         fps.append(fingerprint_layer(eig, layer=i, projection="down_proj", n_samples=4096))
-    est = estimate_compression(fps)
-    # suggested budgets should be strictly increasing conservatism
-    assert est.budget_bits_aggressive < est.budget_bits_balanced < est.budget_bits_conservative
-    assert 2.0 <= est.budget_bits_aggressive <= 4.5
-    assert 0.0 <= est.headroom_score <= 1.0
+    summary = estimate_compression(fps)   # alias for summarize() in v0.1
+    # v0.1 measurement-only: verify the summary reports the right structure
+    assert summary.n_fingerprints == 6
+    assert 0.0 <= summary.mean_k95_ratio <= 1.0
+    assert isinstance(summary.regime_counts, dict)
+    assert isinstance(summary.fit_quality_counts, dict)
+    assert isinstance(summary.d_star_by_bits, dict)
+    # regimes should cover all fingerprints
+    assert sum(summary.regime_counts.values()) == 6
 
 
 def test_empty_fingerprints_raises():
