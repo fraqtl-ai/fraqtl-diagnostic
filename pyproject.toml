@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fraqtl-diagnostic"
-version = "0.1.1"
+version = "0.1.2"
 description = "Fingerprint any transformer's compression potential in 30 minutes."
 readme = "README.md"
 license = { text = "Apache-2.0" }
