@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.png" alt="fraQtl" width="160"/>
+  <img src="https://raw.githubusercontent.com/fraqtl-ai/fraqtl-diagnostic/main/docs/logo.png" alt="fraQtl" width="160"/>
 </p>
 
 <h1 align="center">fraQtl Diagnostic</h1>
