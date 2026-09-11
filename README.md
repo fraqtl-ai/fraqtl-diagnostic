@@ -5,8 +5,33 @@
 <h1 align="center">fraQtl Diagnostic</h1>
 
 <p align="center">
-  Fingerprint any transformer's compression potential — fast.
+  Measure what your GPU fleet actually pays for KV cache — and what compression will (and won't) fix.
 </p>
+
+## New in 0.2: KV audit
+
+```bash
+fraqtl kv-audit meta-llama/Llama-3.2-1B-Instruct
+```
+
+On your GPU, in minutes, for any HuggingFace model:
+
+- **Capacity** — KV GB per 128K-context user; concurrent users per GPU at
+  FP16 vs 4-bit.
+- **Damage law + risk map** — exact attention-output damage vs bits, per
+  layer; which layers break the high-rate law (where aggressive
+  compression fails first).
+- **Tuning verdict** — whether per-layer precision tuning can pay on YOUR
+  model, via the sizing rule (signal vs noise dispersion of measured
+  damage constants). Spoiler from our published receipts: usually it
+  can't — uniform is near-optimal — and this tool shows you why honestly.
+
+No data leaves your machine. Generic quantization only (no proprietary
+codec). The calibrated audit — measured capacity at fraQtl's production
+contracts (receipt: 9x concurrent 128K users at 134 tok/s on one A100 vs
+2 users FP16), with quality certificates — is a service: hello@fraqtl.ai.
+
+---
 
 Measures per-layer:
 - **γ** (stretched-exponential decay shape of the Hessian spectrum)
