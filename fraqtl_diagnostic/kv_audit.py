@@ -147,7 +147,18 @@ def run_kv_audit(
     context: int = 131072,
     trust_remote_code: bool = False,
 ) -> KVAuditResult:
-    model, tok = load_model(model_id, trust_remote_code=trust_remote_code)
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch as _t
+        tok = AutoTokenizer.from_pretrained(
+            model_id, trust_remote_code=trust_remote_code)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=_t.float16, device_map="auto",
+            attn_implementation="sdpa",
+            trust_remote_code=trust_remote_code)
+    except (ValueError, TypeError):
+        # architecture doesn't accept sdpa; fall back to default loader
+        model, tok = load_model(model_id, trust_remote_code=trust_remote_code)
     model.eval()
     seqs = load_wikitext_calibration(tok, n_seqs=n_seqs, seq_len=seq_len)
 
@@ -157,6 +168,13 @@ def run_kv_audit(
         rec = _SDPARecorder()
         with rec, torch.no_grad():
             model(ids.unsqueeze(0).to(model.device), use_cache=False)
+        if not rec.calls:
+            raise RuntimeError(
+                "kv-audit could not observe attention calls: this model's "
+                "attention implementation bypasses "
+                "torch.nn.functional.scaled_dot_product_attention. "
+                "Try --trust-remote-code, or open an issue with the model id."
+            )
         if n_layers is None:
             n_layers = len(rec.calls)
             kv_heads = rec.calls[0][1].shape[-3]
