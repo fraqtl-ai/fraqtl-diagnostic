@@ -34,7 +34,7 @@ import torch.nn.functional as F
 from ._model_io import load_model, load_wikitext_calibration
 
 BITS = (3, 4, 5, 6)
-FLIP_SLOPE = -2.0
+FLIP_SLOPE = -1.5  # clear violation of the ~-2 high-rate law (K only; V damage is linear in dV, flips are a routing phenomenon)
 
 
 @dataclass
@@ -198,9 +198,14 @@ def run_kv_audit(
                 sl, ic = np.polyfit(BITS, np.log2(np.maximum(med, 1e-30)), 1)
                 store[(layer, side)] = (float(sl), float(ic))
 
-    flip = {s: [l for l in range(n_layers)
-                if slopes_b[(l, s)][0] > FLIP_SLOPE]
-            for s in ("K", "V")}
+    k_slopes = [slopes_b[(l, "K")][0] for l in range(n_layers)]
+    v_slopes = [slopes_b[(l, "V")][0] for l in range(n_layers)]
+    flip = {
+        "K": [l for l in range(n_layers) if slopes_b[(l, "K")][0] > FLIP_SLOPE],
+        "V": [],  # V damage is linear in dV; the flip concept applies to K routing only
+        "k_slope_range": [round(min(k_slopes), 2), round(max(k_slopes), 2)],
+        "v_slope_range": [round(min(v_slopes), 2), round(max(v_slopes), 2)],
+    }
 
     sizing = {}
     b_op = 4
@@ -270,9 +275,12 @@ def render_markdown(r: KVAuditResult) -> str:
         "## Damage law + risk map",
         "",
         f"- Fitted slopes ~ -2 confirm the high-rate law where it holds.",
-        f"- Flip-regime layers (violate the law; quality failures concentrate "
-        f"here under aggressive compression): K {r.flip_layers['K'] or 'none'}, "
-        f"V {r.flip_layers['V'] or 'none'}.",
+        f"- Fitted slope ranges: K {r.flip_layers['k_slope_range']}, "
+        f"V {r.flip_layers['v_slope_range']} (high-rate law predicts ~ -2; "
+        f"shallower K slopes mean outlier-dominated decay).",
+        f"- K flip-risk layers (slope > {FLIP_SLOPE}, clear law violation — "
+        f"routing failures concentrate here under aggressive compression): "
+        f"{r.flip_layers['K'] or 'none'}.",
         "",
         "## Per-layer tuning verdict (sizing rule)",
         "",
