@@ -78,6 +78,7 @@ def _make_parser() -> argparse.ArgumentParser:
     kv.add_argument("--context", type=int, default=131072)
     kv.add_argument("--out-dir", default="reports")
     kv.add_argument("--trust-remote-code", action="store_true")
+    kv.add_argument("--cleanup-cache", action="store_true", help="Delete the downloaded model from the HF cache after the audit (reclaims disk space).")
 
     sub.add_parser("list-refs", help="List bundled reference models.")
     return p
@@ -106,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
         j, md = kv_audit_to_files(result, _P(args.out_dir))
         print(f"wrote {j}")
         print(f"wrote {md}")
+        if args.cleanup_cache:
+            from .kv_audit import evict_model_cache
+            gone = evict_model_cache(args.model_id)
+            print(f"cleaned model cache: {gone}" if gone else "cache dir not found (nothing deleted)")
         return 0
 
     if args.command != "analyze":

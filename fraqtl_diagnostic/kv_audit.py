@@ -162,6 +162,21 @@ def _row_damages(q, k, v, bits_list):
     return out
 
 
+def evict_model_cache(model_id: str) -> str | None:
+    """Delete the model's HuggingFace hub snapshot to reclaim disk space."""
+    import shutil
+    from pathlib import Path as _P
+    try:
+        from huggingface_hub.constants import HF_HUB_CACHE
+        d = _P(HF_HUB_CACHE) / f"models--{model_id.replace('/', '--')}"
+        if d.exists():
+            shutil.rmtree(d)
+            return str(d)
+    except Exception:
+        pass
+    return None
+
+
 def run_kv_audit(
     model_id: str,
     *,
