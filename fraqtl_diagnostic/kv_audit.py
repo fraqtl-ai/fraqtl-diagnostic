@@ -254,6 +254,13 @@ def run_kv_audit(
                        for l in range(n_layers)]) * np.log(2)
         lb = np.array([slopes_b[(l, side)][1] + b_op * slopes_b[(l, side)][0]
                        for l in range(n_layers)]) * np.log(2)
+        finite = np.isfinite(la) & np.isfinite(lb)
+        la, lb = la[finite], lb[finite]  # sliding-window layers can yield zero damage -> -inf
+        if la.size < 4:
+            sizing[side] = {"sigma_signal": None, "sigma_noise": None,
+                            "H": None, "R": None,
+                            "verdict": "insufficient finite cells to evaluate"}
+            continue
         logr = la - lb
         H = float(np.mean(np.exp(lb - lb.max()))
                   / np.exp(np.mean(lb - lb.max())))
