@@ -63,7 +63,7 @@ def load_wikitext_calibration(
     """
     from datasets import load_dataset
 
-    ds = load_dataset("wikitext", "wikitext-2-raw-v1", split="train")
+    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")
     chosen = []
     for t in ds["text"]:
         if len(t) < 200:

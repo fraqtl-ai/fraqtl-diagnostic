@@ -70,6 +70,16 @@ def _make_parser() -> argparse.ArgumentParser:
                    help="Compare against a bundled reference model and emit a verdict. "
                         "Run `fraqtl list-refs` to see bundled references.")
 
+    kv = sub.add_parser("kv-audit", help="Measure KV-cache compressibility: damage law, risk map, tuning verdict, capacity.")
+    kv.add_argument("model_id", help="HuggingFace model id or local path")
+    kv.add_argument("--seq-len", type=int, default=1024)
+    kv.add_argument("--n-seqs", type=int, default=6)
+    kv.add_argument("--hbm-gb", type=float, default=80.0)
+    kv.add_argument("--context", type=int, default=131072)
+    kv.add_argument("--out-dir", default="reports")
+    kv.add_argument("--trust-remote-code", action="store_true")
+    kv.add_argument("--cleanup-cache", action="store_true", help="Delete the downloaded model from the HF cache after the audit (reclaims disk space).")
+
     sub.add_parser("list-refs", help="List bundled reference models.")
     return p
 
@@ -84,6 +94,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {m}")
         print()
         print(f"Calibration: {calibration_description()}")
+        return 0
+
+    if args.command == "kv-audit":
+        from pathlib import Path as _P
+        from .kv_audit import kv_audit_to_files, run_kv_audit
+        result = run_kv_audit(
+            args.model_id, seq_len=args.seq_len, n_seqs=args.n_seqs,
+            hbm_gb=args.hbm_gb, context=args.context,
+            trust_remote_code=args.trust_remote_code,
+        )
+        j, md = kv_audit_to_files(result, _P(args.out_dir))
+        print(f"wrote {j}")
+        print(f"wrote {md}")
+        if args.cleanup_cache:
+            from .kv_audit import evict_model_cache
+            gone = evict_model_cache(args.model_id)
+            print(f"cleaned model cache: {gone}" if gone else "cache dir not found (nothing deleted)")
         return 0
 
     if args.command != "analyze":
