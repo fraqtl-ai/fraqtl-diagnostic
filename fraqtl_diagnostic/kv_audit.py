@@ -31,7 +31,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from ._model_io import load_model, load_wikitext_calibration
+from ._model_io import load_model
 
 BITS = (3, 4, 5, 6)
 FLIP_SLOPE = -1.5  # clear violation of the ~-2 high-rate law (K only; V damage is linear in dV, flips are a routing phenomenon)
@@ -62,6 +62,31 @@ class KVAuditResult:
             "meta": self.meta,
         }
         return json.dumps(j, indent=1)
+
+
+def _calibration_sequences(tok, *, n_seqs: int, seq_len: int):
+    """Concatenate wikitext into a token stream and chunk it.
+
+    The legacy load_wikitext_calibration picks single documents of length
+    >= seq_len, which yields nothing for seq_len ~1024; this builder always
+    succeeds for any seq_len.
+    """
+    from datasets import load_dataset
+    ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", split="train")
+    text, need = [], n_seqs * seq_len * 8  # chars, generous overshoot
+    total = 0
+    for row in ds:
+        t = row["text"]
+        if t.strip():
+            text.append(t)
+            total += len(t)
+            if total > need:
+                break
+    ids = tok("\n\n".join(text), return_tensors="pt",
+              truncation=False).input_ids[0]
+    if ids.numel() < n_seqs * seq_len:
+        raise RuntimeError("not enough calibration tokens; lower --seq-len")
+    return [ids[i * seq_len:(i + 1) * seq_len] for i in range(n_seqs)]
 
 
 def _quant(x: torch.Tensor, bits: int) -> torch.Tensor:
@@ -160,7 +185,7 @@ def run_kv_audit(
         # architecture doesn't accept sdpa; fall back to default loader
         model, tok = load_model(model_id, trust_remote_code=trust_remote_code)
     model.eval()
-    seqs = load_wikitext_calibration(tok, n_seqs=n_seqs, seq_len=seq_len)
+    seqs = _calibration_sequences(tok, n_seqs=n_seqs, seq_len=seq_len)
 
     per_seq: list[dict] = []
     n_layers = kv_heads = head_dim = None
